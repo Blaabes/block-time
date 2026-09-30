@@ -459,7 +459,7 @@ nav button[aria-selected="true"]{color:var(--fg);border-top-color:var(--cyan)}
     <section id="crew" class="screen" hidden>
       <div class="seg" id="cwSeg" style="flex:none">
         <button type="button" data-v="trips">Flights</button>
-        <button type="button" data-v="people">People</button>
+        <button type="button" data-v="people">Crew</button>
       </div>
       <div class="cw-view" id="cwListView">
         <div class="cw-top">
@@ -496,7 +496,7 @@ nav button[aria-selected="true"]{color:var(--fg);border-top-color:var(--cyan)}
       <div class="cw-view" id="cwDetView" hidden>
         <div class="cw-hd">
           <div><div class="nm" id="cwdName"></div><div class="sb" id="cwdSub"></div></div>
-          <span class="cw-hdb"><button type="button" class="back" id="cwEditHdr">Edit</button><button type="button" class="back" id="cwBack">&#8592; People</button></span>
+          <span class="cw-hdb"><button type="button" class="back" id="cwEditHdr">Edit</button><button type="button" class="back" id="cwBack">&#8592; Crew</button></span>
         </div>
         <div class="cw-det" id="cwdBody"></div>
       </div>
@@ -674,8 +674,8 @@ function pClear(){P.legs=[];P.dep='';P.sel=null;P.entry='';P.target='dep';P.exam
 function pCommit(){
   if(P.target==='dep'){
     const c=parseClock(P.entry);P.entry='';
-    if(c===null){P.last='Start time must be HHMM, like 0215';return}
-    P.dep=fmtClock(c);P.target='leg';P.last=`Start ${P.dep}Z · ETAs updated`;pSave();return;
+    if(c===null){P.last='Off time must be HHMM, like 0215';return}
+    P.dep=fmtClock(c);P.target='leg';P.last=`Off ${P.dep}Z · ETAs updated`;pSave();return;
   }
   const v=parseDur(P.entry);P.entry='';
   if(P.sel!==null){
@@ -729,12 +729,12 @@ function pRender(k){
   $('#pCount').textContent=n;
   $('#pTotal').innerHTML=fmtDur(cum)+(P.example?'<span class="tag">Example</span>':'');
   const eb=$('#pEtaBtn');eb.classList.toggle('unset',dep==null);eb.classList.toggle('active',P.target==='dep');
-  $('#pEtaLbl').textContent=dep!=null?`ETA · start ${P.dep}Z`:'Start time';
+  $('#pEtaLbl').textContent=dep!=null?`ETA · off ${P.dep}Z`:'Off time';
   $('#pEta').textContent=dep==null?'Set':(n?fmtClock(dep+cum)+'Z':P.dep+'Z');
 
   const entry=$('#pEntry');entry.classList.toggle('dep',P.target==='dep');
   let lbl,ph;
-  if(P.target==='dep'){lbl='Start time (Z) · 4 digits';ph='----'}
+  if(P.target==='dep'){lbl='Off time (Z) · 4 digits';ph='----'}
   else if(P.sel!==null){lbl=`Editing WPT ${P.sel+1} · was ${fmtDur(P.legs[P.sel])}`;ph=P.mode==='enter'?'—':'_'.repeat(modeMax())}
   else{lbl=`WPT ${n+1} · leg time`;ph=P.mode==='enter'?'—':'_'.repeat(modeMax())}
   $('#pLbl').textContent=lbl;
@@ -783,7 +783,7 @@ keypad($('#pKeys'),[
   {k:'7'},{k:'8'},{k:'9'},{k:'back',t:'⌫',c:'fn',a:'Delete digit'},
   {k:'4'},{k:'5'},{k:'6'},{k:'undo',t:'Undo',c:'fn'},
   {k:'1'},{k:'2'},{k:'3'},{k:'enter',t:'Enter',c:'go',rs:2},
-  {k:'0',cs:2},{k:'off',t:'Start',c:'fn',a:'Set start time'}
+  {k:'0',cs:2},{k:'off',t:'Off',c:'fn',a:'Set off time'}
 ],pKey);
 
 /* =========================================================
@@ -1149,7 +1149,7 @@ function cwRender(){
     }).join('');
   }
   $('#cwCount').textContent=PEOPLE.length
-    ?(list.length===PEOPLE.length?PEOPLE.length+' people':list.length+' of '+PEOPLE.length)
+    ?(list.length===PEOPLE.length?PEOPLE.length+' crew':list.length+' of '+PEOPLE.length)
     :'';
 }
 /* Sections the app offers to add. 'Flights together' is left out: it comes
@@ -1659,7 +1659,7 @@ async function cwFiles(files){
     kept?'kept '+kept+' newer here':'',
     nt?nt+' trip'+(nt===1?'':'s'):'',
     skipped?'skipped '+skipped+' non-crew':'',
-    PEOPLE.length+' people'].filter(Boolean).join(' · ');
+    PEOPLE.length+' crew'].filter(Boolean).join(' · ');
 }
 /* Trips are keyed (date, from, to), so a re-import updates rather than
    duplicates; a trip edited more recently on this device is left alone. */
@@ -1911,7 +1911,7 @@ async function davRun(testOnly){
     davMsg('Done — pulled '+r.pulled+', pushed '+r.pushed
       +(r.pulledTrips?', '+r.pulledTrips+' trip(s) in':'')
       +(r.skipped?', ignored '+r.skipped+' file(s) that are not crew notes':'')
-      +'. '+PEOPLE.length+' people here.');
+      +'. '+PEOPLE.length+' crew here.');
     if(cwMode==='people')cwRender();else tRender();
   }catch(err){davMsg(davExplain(err))}
 }
