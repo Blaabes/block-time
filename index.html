@@ -363,6 +363,7 @@ nav button[aria-selected="true"]{color:var(--fg);border-top-color:var(--cyan)}
           <label><span class="lbl">Username</span><input id="dvUser" autocomplete="username"></label>
           <label><span class="lbl">App password</span><input id="dvPass" type="password" autocomplete="current-password"></label>
           <label><span class="lbl">Folder</span><input id="dvFolder" placeholder="Crew" autocomplete="off"></label>
+          <label class="check"><input type="checkbox" id="dvAuto" checked> Sync automatically</label>
           <div class="cw-edb"><button type="button" class="ok" id="dvSync">Sync now</button>
             <button type="button" id="dvTest">Test</button></div>
           <p class="cw-none" id="dvMsg"></p>
@@ -1169,7 +1170,7 @@ let cwEd=null;   // {si, ii} — ii null means "new item in section si"
 let cwHdr=false; // editing name / role / logbook name
 
 const person=()=>PEOPLE.find(x=>x.id===cwOpen);
-function cwSave(p){p.updated=new Date().toISOString();return dbPut('people',p).catch(()=>{})}
+function cwSave(p){p.updated=new Date().toISOString();davSoon();return dbPut('people',p).catch(()=>{})}
 
 function cwShow(id){
   if(id&&id!==cwOpen){cwEd=null;cwHdr=false;cwOpen=id}
@@ -1368,7 +1369,7 @@ function tripsFor(pid){
   return TRIPS.filter(t=>(t.crew||[]).some(c=>c.pid===pid))
     .sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:0);
 }
-function tSave(t){t.updated=new Date().toISOString();return dbPut('assignments',t).catch(()=>{})}
+function tSave(t){t.updated=new Date().toISOString();davSoon();return dbPut('assignments',t).catch(()=>{})}
 
 function setMode(m){
   cwMode=m;store.set('cwMode',m);
@@ -1944,6 +1945,33 @@ async function davRun(testOnly){
   }catch(err){davMsg(davExplain(err,cfg))}
 }
 
+/* Sync on its own: when the app opens, when it comes back to the foreground, and
+   a little after an edit — so a note written in a hotel leaves the phone without
+   anyone remembering to press anything. Deliberately quiet: offline is the normal
+   state in this job, so a failure says nothing and changes nothing. */
+let davBusy=false,davTimer=null;
+const davAutoOn=()=>store.get('davAuto',true)!==false;
+async function davMaybe(reason,minGap){
+  if(davBusy||!davAutoOn())return;
+  const cfg=davCfg();
+  if(!davReady(cfg))return;
+  if(navigator.onLine===false)return;
+  /* never yank a list out from under someone mid-sentence */
+  if(document.activeElement&&document.activeElement.matches&&
+     document.activeElement.matches('input,textarea'))return;
+  const now=Date.now(),last=store.get('davAt',0);
+  if(minGap&&now-last<minGap)return;
+  davBusy=true;store.set('davAt',now);
+  try{await davRun(false)}catch(e){}
+  davBusy=false;
+}
+/* an edit should reach the server soon, but not on every keystroke */
+function davSoon(){
+  if(!davAutoOn())return;
+  clearTimeout(davTimer);
+  davTimer=setTimeout(()=>davMaybe('edit',0),20000);
+}
+
 /* ---------- wiring ---------- */
 $('#cwSearch').oninput=e=>{cwQ=e.target.value;cwRender()};
 $('#cwRows').addEventListener('click',e=>{
@@ -1974,6 +2002,8 @@ $('#cwImport').onclick=()=>$('#cwFile').click();
 $('#cwFile').onchange=e=>{const f=[...e.target.files];e.target.value='';if(f.length)cwFiles(f)};
 $('#cwExport').onclick=cwExport;
 davFields();
+$('#dvAuto').checked=davAutoOn();
+$('#dvAuto').onchange=()=>store.set('davAuto',$('#dvAuto').checked);
 $('#dvTest').onclick=()=>davRun(true);
 $('#dvSync').onclick=()=>davRun(false);
 ['dvUrl','dvUser','dvPass','dvFolder'].forEach(id=>$('#'+id).onchange=()=>davCollect());
@@ -1989,6 +2019,11 @@ async function cwInit(){
   /* rInit() runs before this resolves, so the Crew Rest button was evaluated
      against an empty TRIPS and hid itself until a tab switch. Refresh it here. */
   if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(()=>{});
+  davMaybe('open',0);
+  document.addEventListener('visibilitychange',()=>{
+    if(document.visibilityState==='visible')davMaybe('foreground',6e5);
+  });
+  addEventListener('online',()=>davMaybe('back online',6e4));
 }
 
 /* =========================================================
