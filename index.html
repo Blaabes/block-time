@@ -228,6 +228,15 @@ nav button[aria-selected="true"]{color:var(--fg);border-top-color:var(--cyan)}
 .status.bad b{color:var(--red)}
 .status.warn b{color:var(--amber)}
 .status.err{border-left-color:var(--amber)}
+/* summary boxes on the Flights view: a heading, then labelled figures in a row */
+.sumh{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px 8px}
+.stats>div{min-width:0}
+.stats .k{font-size:11px;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stats .v{font-family:var(--mono);font-size:18px;font-weight:600;white-space:nowrap}
+.stats .v small{display:block;font-family:var(--sans,inherit);font-size:12px;font-weight:400;color:var(--muted)}
+.sumline{margin-top:6px;font-size:13px}
+.sumsrc{margin-top:2px;color:var(--muted);font-size:12px}
 .tl{position:relative;height:30px;border-radius:6px;background:var(--panel2);overflow:hidden;border:1px solid var(--line)}
 .tl .seg-b{position:absolute;top:0;bottom:0;background:repeating-linear-gradient(135deg,var(--line) 0 4px,transparent 4px 8px)}
 .tl .br{position:absolute;top:4px;bottom:4px;border-radius:3px;font-family:var(--mono);font-size:11px;color:var(--onaccent);display:flex;align-items:center;justify-content:center;overflow:hidden;white-space:nowrap}
@@ -1457,30 +1466,30 @@ function tCurrency(){
       +'<b>flights.json</b> to bring your logbook history in.';
     return;
   }
-  let head='<b>'+r.in90+'</b> landing'+(r.in90===1?'':'s')+' in the last 90 days';
-  if(r.simIn90===r.in90&&r.in90)head+=' — all in the sim'
-    +(r.lastSim?' ('+pretty(r.lastSim.d)+')':'');
-  else if(r.simIn90)head+=' — '+r.simIn90+' of them in the sim';
-  const parts=[head];
-  if(r.lastAc)parts.push('Last aircraft landing '+pretty(r.lastAc.d)
-    +(r.lastAc.rt?' · '+esc(r.lastAc.rt):''));
   /* +89, not +90: the 90-day window is the current day plus the 89 before it, so a
      landing still counts on day 89. The company shows that last valid day and calls
      it the expiry date — match both the number and the word. */
-  if(r.expires)parts.push('Expires '+pretty(r.expires)
-    +(r.needed?' \u00b7 needs '+r.needed+' by then':'')
-    +(r.daysLeft!=null?' ('+r.daysLeft+' day'+(r.daysLeft===1?'':'s')+')':''));
+  const cell=(k,v)=>'<div><div class="k">'+k+'</div><div class="v">'+v+'</div></div>';
+  const cells=[cell('90 days','<b>'+r.in90+'</b>'),cell('In sim',String(r.simIn90)),
+    cell('Expires',r.expires?'<b>'+pretty(r.expires)+'</b>'
+      +(r.daysLeft==null?'':'<small>'+(r.daysLeft<0?'expired':r.daysLeft===0?'today'
+        :r.daysLeft+' day'+(r.daysLeft===1?'':'s'))+'</small>'):'&mdash;'),
+    cell('Needed',r.expires?String(r.needed):'3')];
   /* Red means not current today. Amber means a renewal falls inside 45 days —
      which is when three in one sim session becomes a rostering problem. */
   el.className=r.in90<3?'status bad'
     :(r.daysLeft!=null&&r.daysLeft<=45?'status warn':'status');
   const src=r.through
-    ? 'Logbook history to '+pretty(r.through)+(r.mine?' plus '+r.mine+' logged here':'')
+    ? 'Logbook to '+pretty(r.through)+(r.mine?' plus '+r.mine+' logged here':'')
     : 'From flights entered here only — import flights.json for your history';
-  el.innerHTML=parts.join('<br>')
-    +'<br><span style="color:var(--muted);font-size:12px">'+src+'</span>';
+  el.innerHTML='<div class="sumh">Landings</div><div class="stats">'+cells.join('')+'</div>'
+    +(r.lastAc?'<div class="sumline">Last aircraft landing '+pretty(r.lastAc.d)
+      +(r.lastAc.rt?' &middot; '+esc(r.lastAc.rt):'')+'</div>':'')
+    +(r.simIn90&&r.simIn90===r.in90&&r.lastSim?'<div class="sumline">All in the sim &middot; last '
+      +pretty(r.lastSim.d)+'</div>':'')
+    +'<div class="sumsrc">'+src+'</div>';
 }
-/* Block hours: this month, the last 30 days, this year (all Zulu dates). The
+/* Block hours: this month, the last 30 days, the last 6 months, this year (Zulu). The
    logbook history counts first; a flight logged here with a block time fills the
    gap since the last import, and a leg already in the history is never counted
    twice — the same rule the landing count uses. */
@@ -1490,21 +1499,24 @@ function blockHours(){
     if(+f.tt)legs.push({d:f.d,m:Math.round(+f.tt*60)})});
   let mine=0;
   const today=zdate(),from30=dayAdd(today,-29);
+  const m6=new Date(Date.parse(today+'T00:00:00Z'));m6.setUTCMonth(m6.getUTCMonth()-6);
+  const from6=m6.toISOString().slice(0,10);
   TRIPS.forEach(t=>{if(!+t.blk||seen[t.date+'|'+t.frm+'|'+t.to]||t.date>today)return;
     legs.push({d:t.date,m:+t.blk});mine++});
   const sum=ok=>legs.filter(l=>ok(l.d)&&l.d<=today).reduce((a,l)=>a+l.m,0);
-  return {month:sum(d=>d.slice(0,7)===today.slice(0,7)),d30:sum(d=>d>=from30),
+  return {month:sum(d=>d.slice(0,7)===today.slice(0,7)),d30:sum(d=>d>=from30),m6:sum(d=>d>from6),
           year:sum(d=>d.slice(0,4)===today.slice(0,4)),mine:mine,any:legs.length>0};
 }
 function tHours(){
   const el=$('#tHours'),h=blockHours();
   if(!h.any){el.hidden=true;return}
   el.hidden=false;
-  el.innerHTML='Block &middot; this month <b>'+fmtDur(h.month)+'</b> &middot; last 30 days <b>'
-    +fmtDur(h.d30)+'</b> &middot; '+zdate().slice(0,4)+' <b>'+fmtDur(h.year)+'</b>'
-    +'<br><span style="color:var(--muted);font-size:12px">'
+  const cell=(k,m)=>'<div><div class="k">'+k+'</div><div class="v">'+fmtDur(m)+'</div></div>';
+  el.innerHTML='<div class="sumh">Block</div><div class="stats">'
+    +cell('This month',h.month)+cell('30 days',h.d30)+cell('6 months',h.m6)+cell(zdate().slice(0,4),h.year)
+    +'</div><div class="sumsrc">'
     +(HIST&&HIST.through?'Logbook to '+pretty(HIST.through):'No logbook imported')
-    +(h.mine?' plus '+h.mine+' flight'+(h.mine===1?'':'s')+' logged here':'')+'</span>';
+    +(h.mine?' plus '+h.mine+' flight'+(h.mine===1?'':'s')+' logged here':'')+'</div>';
 }
 function tRender(){
   tCurrency();
