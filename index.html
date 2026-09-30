@@ -231,7 +231,7 @@ nav button[aria-selected="true"]{color:var(--fg);border-top-color:var(--cyan)}
 /* summary boxes on the Flights view: a heading, then labelled figures in a row */
 .sumh{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
 .stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px 8px}
-.stats.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+.stats.three{grid-template-columns:repeat(3,minmax(0,1fr))}
 .stats>div{min-width:0}
 .stats .k{font-size:11px;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .stats .v{font-family:var(--mono);font-size:18px;font-weight:600;white-space:nowrap}
@@ -1477,7 +1477,12 @@ function tCurrency(){
     cell('Expires',r.expires?'<b>'+pretty(r.expires)+'</b>'
       +(r.daysLeft==null?'':'<small>'+(r.daysLeft<0?'expired':r.daysLeft===0?'today'
         :r.daysLeft+' day'+(r.daysLeft===1?'':'s'))+'</small>'):'&mdash;'),
-    cell('Needed',r.expires?String(r.needed):'3')];
+    /* Before expiry: how many renew it by the expiry date. After it: the old
+       landings no longer count, so it is three less any made in the last 90 days. */
+    cell('Needed',String(r.expires&&r.daysLeft>=0?r.needed:Math.max(0,3-r.in90))),
+    /* The last aircraft landing shares the row, so the box is one line of figures
+       and uses its full width (Jake: "lots of room on the right side"). */
+    cell('Last landing',r.lastAc?pretty(r.lastAc.d)+(r.lastAc.rt?'<small>'+esc(r.lastAc.rt)+'</small>':''):'&mdash;')];
   /* Red means not current today. Amber means a renewal falls inside 45 days —
      which is when three in one sim session becomes a rostering problem. */
   el.className=r.in90<3?'status bad'
@@ -1485,9 +1490,7 @@ function tCurrency(){
   const src=r.through
     ? 'Logbook to '+pretty(r.through)+(r.mine?' plus '+r.mine+' logged here':'')
     : 'From flights entered here only — import flights.json for your history';
-  el.innerHTML='<div class="sumh">Landings</div><div class="stats two">'+cells.join('')+'</div>'
-    +(r.lastAc?'<div class="sumline">Last aircraft landing '+pretty(r.lastAc.d)
-      +(r.lastAc.rt?' &middot; '+esc(r.lastAc.rt):'')+'</div>':'')
+  el.innerHTML='<div class="sumh">Landings</div><div class="stats three">'+cells.join('')+'</div>'
     /* Only when every landing in the window came from the box — worth knowing on an
        augmented long-haul roster (Jake: "the note about the sim is super nice"). */
     +(r.simIn90&&r.simIn90===r.in90&&r.lastSim?'<div class="sumline">All in the sim &middot; last '
