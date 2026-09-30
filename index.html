@@ -25,7 +25,7 @@ img{max-width:100%}
 :root{
   --bg:#0b1015; --panel:#121a21; --panel2:#18222b; --line:#24313b;
   --fg:#e4ecf1; --muted:#8493a1;
-  --cyan:#4fc3e6; --magenta:#e25ad1; --amber:#f0a53a; --sand:#d8c69c;
+  --cyan:#4fc3e6; --magenta:#e25ad1; --amber:#f0a53a; --sand:#d8c69c; --red:#ff5449;
   --key:#19232c; --keyhi:#25333e; --onaccent:#061016;
   --display:'B612',system-ui,-apple-system,sans-serif;
   --mono:'B612 Mono',ui-monospace,Menlo,Consolas,monospace;
@@ -35,7 +35,7 @@ img{max-width:100%}
   :root:not([data-theme="dark"]){
     --bg:#e8edf1; --panel:#ffffff; --panel2:#f3f6f8; --line:#ccd6dd;
     --fg:#0e1920; --muted:#556774;
-    --cyan:#06779b; --magenta:#a82996; --amber:#955804; --sand:#78663a;
+    --cyan:#06779b; --magenta:#a82996; --amber:#955804; --sand:#78663a; --red:#c0271c;
     --key:#ffffff; --keyhi:#dfe7ec; --onaccent:#ffffff;
     color-scheme:light;
   }
@@ -224,6 +224,8 @@ nav button[aria-selected="true"]{color:var(--fg);border-top-color:var(--cyan)}
 .check input{width:18px;height:18px;accent-color:var(--cyan)}
 .status{padding:10px 12px;border-radius:10px;font-size:14px;line-height:1.45;background:var(--panel2);border-left:3px solid var(--cyan)}
 .status.warn{border-left-color:var(--amber);color:var(--fg)}
+.status.bad{border-left-color:var(--red);color:var(--fg)}
+.status.bad b{color:var(--red)}
 .status.warn b{color:var(--amber)}
 .status.err{border-left-color:var(--amber)}
 .tl{position:relative;height:30px;border-radius:6px;background:var(--panel2);overflow:hidden;border:1px solid var(--line)}
@@ -1167,7 +1169,9 @@ function cwRender(){
 }
 /* Sections the app offers to add. 'Flights together' is left out: it comes
    from the logbook, not from typing. */
-const ADDABLE=SECORDER.filter(t=>t!=='Flights together');
+/* 'Flights together' comes from the logbook, and 'Notes log' is created by the
+   Add a note box — neither is something to add by hand. */
+const ADDABLE=SECORDER.filter(t=>t!=='Flights together'&&t!=='Notes log');
 
 let cwEd=null;   // {si, ii} — ii null means "new item in section si"
 let cwHdr=false; // editing name / role / logbook name
@@ -1420,9 +1424,23 @@ function landingRecency(){
   all.sort((a,b)=>a.d<b.d?1:a.d>b.d?-1:0);
   const today=zdate(),from=dayAdd(today,-89);
   const in90=all.filter(e=>e.d>=from&&e.d<=today);
+  /* When the third-most-recent drops out you fall below three. How many will be
+     needed then depends on how many are newer than it: three landings on one day
+     means needing three again, three spread out means needing one. */
+  const last3=all.slice(0,3);
+  let expires=null,needed=0;
+  if(last3.length===3){
+    const third=last3[2].d;
+    expires=dayAdd(third,89);
+    needed=3-all.filter(e=>e.d>third).length;
+    if(needed<0)needed=0;
+  }
+  const daysLeft=expires?Math.round((Date.parse(expires+'T00:00:00Z')
+    -Date.parse(today+'T00:00:00Z'))/86400000):null;
   return {all:all,in90:in90.length,simIn90:in90.filter(e=>e.sim).length,
-          last3:all.slice(0,3),lastAc:all.find(e=>!e.sim)||null,
+          last3:last3,lastAc:all.find(e=>!e.sim)||null,
           lastSim:all.find(e=>e.sim)||null,through:HIST&&HIST.through||null,
+          expires:expires,needed:needed,daysLeft:daysLeft,
           mine:TRIPS.reduce((n,t)=>n+(seen[t.date+'|'+t.frm+'|'+t.to]?0:(+t.ldg||0)),0)};
 }
 function tCurrency(){
@@ -1445,9 +1463,13 @@ function tCurrency(){
   /* +89, not +90: the 90-day window is the current day plus the 89 before it, so a
      landing still counts on day 89. The company shows that last valid day and calls
      it the expiry date — match both the number and the word. */
-  if(r.last3.length===3)parts.push('Expires '+pretty(dayAdd(r.last3[2].d,89))
-    +' — on the third most recent landing');
-  el.className=r.in90>=3?'status':'status warn';
+  if(r.expires)parts.push('Expires '+pretty(r.expires)
+    +(r.needed?' \u00b7 needs '+r.needed+' by then':'')
+    +(r.daysLeft!=null?' ('+r.daysLeft+' day'+(r.daysLeft===1?'':'s')+')':''));
+  /* Red means not current today. Amber means a renewal falls inside 45 days —
+     which is when three in one sim session becomes a rostering problem. */
+  el.className=r.in90<3?'status bad'
+    :(r.daysLeft!=null&&r.daysLeft<=45?'status warn':'status');
   const src=r.through
     ? 'Logbook history to '+pretty(r.through)+(r.mine?' plus '+r.mine+' logged here':'')
     : 'From flights entered here only — import flights.json for your history';
