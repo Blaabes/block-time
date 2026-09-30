@@ -358,6 +358,8 @@ nav button[aria-selected="true"]{color:var(--fg);border-top-color:var(--cyan)}
         <summary class="lbl" style="cursor:pointer">Crew sync (WebDAV) &mdash; optional</summary>
         <div class="cw-f" style="margin-top:10px">
           <label><span class="lbl">Server</span><input id="dvUrl" placeholder="https://cloud.example.com" autocomplete="off" inputmode="url"></label>
+          <p class="cw-none" style="margin:-4px 0 0">Just the https:// host is enough. Folder is the path
+          from your Nextcloud root, no leading slash &mdash; e.g. <b>Obsidian/MyVault/Crew</b>.</p>
           <label><span class="lbl">Username</span><input id="dvUser" autocomplete="username"></label>
           <label><span class="lbl">App password</span><input id="dvPass" type="password" autocomplete="current-password"></label>
           <label><span class="lbl">Folder</span><input id="dvFolder" placeholder="Crew" autocomplete="off"></label>
@@ -1756,7 +1758,7 @@ async function davList(c,fetchImpl){
     body:'<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop>'
       +'<d:getlastmodified/><d:resourcetype/></d:prop></d:propfind>'});
   if(r.status===404)return null;              // folder not there yet
-  if(!r.ok)throw new Error('PROPFIND '+r.status);
+  if(!r.ok)throw new Error('PROPFIND '+r.status+(r.status===0?' (blocked before it left the browser)':''));
   return davParse(await r.text()).filter(x=>!x.dir&&x.name);
 }
 async function davMkcol(c,fetchImpl){
@@ -1866,15 +1868,31 @@ function davCollect(){
   store.set('dav',c);return davCfg();
 }
 const davMsg=t=>{const e=$('#dvMsg');if(e)e.textContent=t};
-function davExplain(err){
+/* Distinguishing these four is the whole game: a wrong folder, a wrong password,
+   a server that is not reachable, and a server that is reachable but refuses
+   this page all feel identical to "it doesn't work". */
+function davExplain(err,cfg){
   const m=String(err&&err.message||err);
+  const where=cfg?' Tried: '+davBase(cfg)+'/':'';
+  if(location.protocol==='https:'&&/^http:/i.test((cfg&&cfg.url)||''))
+    return 'This page is served over HTTPS, so the browser blocks a plain http:// server. '
+      +'Nextcloud has to be reachable over https.';
   if(/Failed to fetch|NetworkError|Load failed/i.test(m))
-    return 'Could not reach the server. Either the address is wrong, or the server is '
-      +'refusing requests from this site (Nextcloud: install the WebAppPassword app).';
-  if(/ 401| 403/.test(m))return 'Rejected: check the username and app password.';
-  if(/ 404/.test(m))return 'Not found: check the server address and folder.';
-  if(/ 405/.test(m))return 'The server refused that method — is this really a WebDAV address?';
-  return m;
+    return 'Could not reach it at all. Either the address is unreachable from this device, '
+      +'or the server is refusing requests from this site (CORS — on Nextcloud, install the '
+      +'WebAppPassword app). If something like Cloudflare Access sits in front, it will block '
+      +'this too.'+where;
+  if(/ 401/.test(m))return 'Rejected (401): wrong username, or that is an account password '
+      +'rather than an app password.'+where;
+  if(/ 403/.test(m))return 'Refused (403): the credentials are understood but not allowed here.'+where;
+  if(/ 404/.test(m))return 'Not found (404): the server answered, so the address and login are '
+      +'fine — it is the folder that is wrong. Give the path from your Nextcloud root, with no '
+      +'leading slash.'+where;
+  if(/ 405/.test(m))return 'The server refused that method (405) — that address is answering, '
+      +'but not as WebDAV.'+where;
+  if(/ 30[0-9]/.test(m))return 'The server redirected (that usually means a login page in front '
+      +'of it, such as Cloudflare Access).'+where;
+  return m+where;
 }
 async function davRun(testOnly){
   const cfg=davCollect();
@@ -1882,8 +1900,11 @@ async function davRun(testOnly){
   try{
     if(testOnly){
       const l=await davList(cfg);
-      davMsg(l===null?'Reachable — the folder does not exist yet; Sync now will create it.'
-                     :'Reachable — '+l.filter(x=>/\.md$/i.test(x.name)).length+' note(s) on the server.');
+      const n=l===null?0:l.filter(x=>/\.md$/i.test(x.name)).length;
+      davMsg(l===null
+        ?'Reached the server and logged in. That folder does not exist yet — Sync now will create it. '
+          +'('+davBase(cfg)+'/)'
+        :'Reached the server: '+n+' note(s) in '+davBase(cfg)+'/');
       return;
     }
     const r=await davSync({
@@ -1913,7 +1934,7 @@ async function davRun(testOnly){
       +(r.skipped?', ignored '+r.skipped+' file(s) that are not crew notes':'')
       +'. '+PEOPLE.length+' crew here.');
     if(cwMode==='people')cwRender();else tRender();
-  }catch(err){davMsg(davExplain(err))}
+  }catch(err){davMsg(davExplain(err,cfg))}
 }
 
 /* ---------- wiring ---------- */

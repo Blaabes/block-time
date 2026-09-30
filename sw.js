@@ -1,5 +1,5 @@
 // Block Time offline cache. Bump VERSION whenever you upload changed files.
-const VERSION = 'bt-v30';
+const VERSION = 'bt-v31';
 const FILES = [
   './', './index.html', './manifest.webmanifest',
   './icon-180.png', './icon-192.png', './icon-512.png',
