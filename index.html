@@ -682,6 +682,9 @@ keypad($('#eKeys'),[
    ========================================================= */
 const P={legs:store.get('p.legs',null),dep:store.get('p.dep',''),mode:store.get('p.mode',2),sel:null,entry:'',target:'leg',last:'',example:false,confirm:false};
 if(P.legs===null){P.legs=[14,23,41,58,62,55,49,37,18,9];P.dep='0215';P.example=true}
+/* An empty plan starts on the off time: it is the first thing you enter, so the
+   amber box should already be waiting rather than needing the Off key first. */
+if(!P.example&&!P.legs.length&&!P.dep)P.target='dep';
 const MODES=[2,3,'enter'];
 const modeMax=()=>P.mode===2?2:P.mode===3?3:5;
 function pSave(){if(P.example)return;store.set('p.legs',P.legs);store.set('p.dep',P.dep)}
