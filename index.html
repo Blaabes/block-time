@@ -498,6 +498,7 @@ nav button[aria-selected="true"]{color:var(--fg);border-top-color:var(--cyan)}
           <button type="button" class="key go" id="tNew" style="height:42px;border-radius:10px">&#43; New flight</button>
         </div>
         <div class="status" id="tCurrency" hidden></div>
+        <div class="status" id="tHours" hidden></div>
         <div class="list" id="tRows"></div>
         <div class="cw-bar"><span class="cnt" id="tCount"></span></div>
       </div>
@@ -1479,8 +1480,35 @@ function tCurrency(){
   el.innerHTML=parts.join('<br>')
     +'<br><span style="color:var(--muted);font-size:12px">'+src+'</span>';
 }
+/* Block hours: this month, the last 30 days, this year (all Zulu dates). The
+   logbook history counts first; a flight logged here with a block time fills the
+   gap since the last import, and a leg already in the history is never counted
+   twice — the same rule the landing count uses. */
+function blockHours(){
+  const seen={},legs=[];
+  (HIST&&HIST.flights||[]).forEach(f=>{seen[f.d+'|'+f.f+'|'+f.t]=1;
+    if(+f.tt)legs.push({d:f.d,m:Math.round(+f.tt*60)})});
+  let mine=0;
+  const today=zdate(),from30=dayAdd(today,-29);
+  TRIPS.forEach(t=>{if(!+t.blk||seen[t.date+'|'+t.frm+'|'+t.to]||t.date>today)return;
+    legs.push({d:t.date,m:+t.blk});mine++});
+  const sum=ok=>legs.filter(l=>ok(l.d)&&l.d<=today).reduce((a,l)=>a+l.m,0);
+  return {month:sum(d=>d.slice(0,7)===today.slice(0,7)),d30:sum(d=>d>=from30),
+          year:sum(d=>d.slice(0,4)===today.slice(0,4)),mine:mine,any:legs.length>0};
+}
+function tHours(){
+  const el=$('#tHours'),h=blockHours();
+  if(!h.any){el.hidden=true;return}
+  el.hidden=false;
+  el.innerHTML='Block &middot; this month <b>'+fmtDur(h.month)+'</b> &middot; last 30 days <b>'
+    +fmtDur(h.d30)+'</b> &middot; '+zdate().slice(0,4)+' <b>'+fmtDur(h.year)+'</b>'
+    +'<br><span style="color:var(--muted);font-size:12px">'
+    +(HIST&&HIST.through?'Logbook to '+pretty(HIST.through):'No logbook imported')
+    +(h.mine?' plus '+h.mine+' flight'+(h.mine===1?'':'s')+' logged here':'')+'</span>';
+}
 function tRender(){
   tCurrency();
+  tHours();
   const box=$('#tRows');
   const list=TRIPS.slice().sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:0);
   if(!list.length){
@@ -1499,7 +1527,7 @@ function tRender(){
   $('#tCount').textContent=TRIPS.length?TRIPS.length+' flight'+(TRIPS.length===1?'':'s'):'';
 }
 function tNewTrip(){
-  const t={id:'',date:zdate(),frm:'',to:'',crew:[],note:'',ldg:0,updated:''};
+  const t={id:'',date:zdate(),frm:'',to:'',crew:[],note:'',ldg:0,blk:0,updated:''};
   t.id='new';tOpen=t;tPick=false;tShow();
 }
 function tShow(id){
@@ -1536,7 +1564,13 @@ function tShow(id){
       +'autocapitalize="characters" autocomplete="off" maxlength="4" placeholder="IAH"></label>'
     +'<label><span class="lbl">To</span><input id="tfTo" value="'+esc(t.to)+'" inputmode="text" '
       +'autocapitalize="characters" autocomplete="off" maxlength="4" placeholder="RFD"></label>'
-    +'</div></div></div>');
+    +'</div>'
+    /* Optional. Typed like the calculator (1234 is 12:34). Only here so the hours
+       summary is current between logbook imports; the company record replaces it
+       once the leg reaches the logbook. */
+    +'<label><span class="lbl">Block (optional)</span><input id="tfBlk" inputmode="numeric" '
+      +'autocomplete="off" maxlength="5" placeholder="1234 is 12:34" value="'+(+t.blk?fmtDur(+t.blk):'')+'"></label>'
+    +'</div></div>');
   out.push('<div class="cw-sec"><h3><span>Who was on it</span>'
     +'<button type="button" id="tAdd" aria-label="Add crew">+</button></h3>'
     +(rows||'<div class="cw-none">Nobody yet. You are assumed to be on it &mdash; add the others.</div>')
@@ -1580,7 +1614,10 @@ function tWire(){
     if($('#tfFrm'))t.frm=ap($('#tfFrm').value);
     if($('#tfTo'))t.to=ap($('#tfTo').value);
     if($('#tfNote'))t.note=$('#tfNote').value.trim();
+    if($('#tfBlk'))t.blk=parseDur($('#tfBlk').value);
   };
+  const bk=$('#tfBlk');
+  if(bk)bk.onblur=()=>{const m=parseDur(bk.value);bk.value=m?fmtDur(m):''};
   ['tfFrm','tfTo'].forEach(id=>{const e=$('#'+id);if(e)e.oninput=()=>{e.value=ap(e.value)}});
   const de=$('#tfDate');
   if(de)de.oninput=()=>{const p=de.selectionStart===de.value.length;de.value=dfmt(de.value);
@@ -1748,6 +1785,7 @@ async function importTrips(jsons){
       const cur=TRIPS.find(x=>x.id===id);
       if(cur&&cur.updated&&j.mtime&&new Date(cur.updated).getTime()>j.mtime)return;
       keep.push({id:id,date:date,frm:frm,to:to,note:t.note||'',ldg:+t.landings||+t.ldg||0,
+        blk:t.block?parseDur(t.block):(+t.blk||0),
         crew:(t.crew||[]).map(c=>({pid:c.id||slug(c.name||''),role:c.role||'CA'}))
               .filter(c=>c.pid),
         updated:new Date(j.mtime||Date.now()).toISOString()});
@@ -1763,6 +1801,7 @@ function buildAssignments(list){
   return JSON.stringify({blocktime:'assignments',version:1,exported:zdate(),
     trips:list.slice().sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0).map(t=>({
       date:t.date,from:t.frm,to:t.to,note:t.note||'',landings:+t.ldg||0,
+      block:+t.blk?fmtDur(+t.blk):'',
       crew:(t.crew||[]).map(c=>({id:c.pid,name:nameOf(c.pid),role:c.role,
         logbook_name:((PEOPLE.find(p=>p.id===c.pid)||{}).aliases||[])[0]||''}))}))},null,2)+'\n';
 }
