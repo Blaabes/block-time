@@ -1,0 +1,19 @@
+# ── PRIVACY: nothing personal may enter this repo ──────────────────────
+# This repo is PUBLIC: the app, and nothing else. Personal records —
+# logbooks, notes about people — stay off it entirely. The app loads any
+# such data at runtime, on the device. See also .git/hooks/pre-commit.
+logbook/
+crew_notes/
+*.ods
+*.xlsx
+*.csv
+*.zip
+flights.json
+assignments.json
+crew/
+*.md
+!README.md
+# personal / local
+.DS_Store
+*.local
+.env

@@ -1,0 +1,2338 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Block Time</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Block Time">
+<meta name="theme-color" content="#0b1015">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<style>
+@font-face{font-family:'B612';src:url(fonts/b612-latin-400-normal.woff2) format('woff2');font-weight:400;font-display:swap}
+@font-face{font-family:'B612';src:url(fonts/b612-latin-700-normal.woff2) format('woff2');font-weight:700;font-display:swap}
+@font-face{font-family:'B612 Mono';src:url(fonts/b612-mono-latin-400-normal.woff2) format('woff2');font-weight:400;font-display:swap}
+@font-face{font-family:'B612 Mono';src:url(fonts/b612-mono-latin-700-normal.woff2) format('woff2');font-weight:700;font-display:swap}
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0;font-size:14px}
+img{max-width:100%}
+[hidden]{display:none!important}
+/* Layout: one-screen instrument panel. Header with live Zulu clock, a working area per tool, keypad docked at thumb height, tabs at the bottom. EFIS color logic: cyan = entries/actions, magenta = active point, amber = caution. */
+:root{
+  --bg:#0b1015; --panel:#121a21; --panel2:#18222b; --line:#24313b;
+  --fg:#e4ecf1; --muted:#8493a1;
+  --cyan:#4fc3e6; --magenta:#e25ad1; --amber:#f0a53a; --sand:#d8c69c;
+  --key:#19232c; --keyhi:#25333e; --onaccent:#061016;
+  --display:'B612',system-ui,-apple-system,sans-serif;
+  --mono:'B612 Mono',ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="dark"]){
+    --bg:#e8edf1; --panel:#ffffff; --panel2:#f3f6f8; --line:#ccd6dd;
+    --fg:#0e1920; --muted:#556774;
+    --cyan:#06779b; --magenta:#a82996; --amber:#955804; --sand:#78663a;
+    --key:#ffffff; --keyhi:#dfe7ec; --onaccent:#ffffff;
+    color-scheme:light;
+  }
+}
+:root[data-theme="light"]{
+  --bg:#e8edf1; --panel:#ffffff; --panel2:#f3f6f8; --line:#ccd6dd;
+  --fg:#0e1920; --muted:#556774;
+  --cyan:#06779b; --magenta:#a82996; --amber:#955804; --sand:#78663a;
+  --key:#ffffff; --keyhi:#dfe7ec; --onaccent:#ffffff;
+  color-scheme:light;
+}
+*,*::before,*::after{box-sizing:border-box}
+html{box-sizing:border-box;height:100%}
+body{height:100%;background:var(--bg);color:var(--fg);font-family:var(--display);-webkit-tap-highlight-color:transparent;overscroll-behavior:none}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;touch-action:manipulation}
+button:focus-visible,input:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+input{font:inherit;color:var(--fg)}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.lbl{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+
+.app{height:100%;max-width:560px;margin:0 auto;padding-inline:16px;display:grid;grid-template-rows:auto 1fr auto;min-height:0}
+header{padding-block:10px 8px}
+.bar{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.brand{font-weight:700;letter-spacing:.16em;font-size:13px;text-transform:uppercase}
+.brand span{color:var(--cyan)}
+.clock{display:flex;align-items:center;gap:10px}
+.zclock{font-family:var(--mono);font-size:17px;color:var(--cyan)}
+.zclock small{color:var(--muted);font-size:12px;margin-left:6px}
+.gear{width:34px;height:34px;border-radius:8px;border:1px solid var(--line);display:grid;place-items:center;color:var(--muted)}
+.gear svg{width:18px;height:18px}
+.settings{margin-top:10px;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--panel);display:grid;gap:10px;font-size:14px;line-height:1.45}
+.settings label{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.settings p{margin:0;color:var(--muted);font-size:13px}
+
+main{position:relative;min-height:0;overflow:hidden}
+.screen{height:100%;display:flex;flex-direction:column;gap:10px;min-height:0;padding-bottom:10px}
+.screen.scroll{overflow-y:auto;-webkit-overflow-scrolling:touch;gap:14px}
+
+nav{display:grid;grid-template-columns:repeat(5,1fr);border-top:1px solid var(--line);padding-bottom:6px}
+nav button{padding:10px 2px 8px;font-size:11.5px;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);border-top:2px solid transparent;margin-top:-1px}
+nav button[aria-selected="true"]{color:var(--fg);border-top-color:var(--cyan)}
+
+/* keypad */
+.keypad{display:grid;grid-template-columns:repeat(4,1fr);grid-auto-rows:52px;gap:7px;flex:none}
+.key{border-radius:10px;background:var(--key);border:1px solid var(--line);font-family:var(--mono);font-size:22px;user-select:none;-webkit-user-select:none}
+.key:active{background:var(--keyhi)}
+.key.op{color:var(--cyan);font-size:24px}
+.key.fn{font-family:var(--display);font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.key.go{background:var(--cyan);border-color:var(--cyan);color:var(--onaccent);font-family:var(--display);font-weight:700;font-size:15px;letter-spacing:.1em;text-transform:uppercase}
+.key.go:active{filter:brightness(1.15)}
+
+/* calculator */
+.tapewrap{flex:1;min-height:0;display:flex;flex-direction:column;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+.tape-head{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line)}
+.link{color:var(--cyan);font-size:13px;padding:4px 0}
+.tape{flex:1;overflow-y:auto;padding:8px 12px;font-family:var(--mono);font-size:16px;display:flex;flex-direction:column;gap:2px}
+.tape .ln{display:flex;justify-content:space-between;gap:12px}
+.tape .ln .o{color:var(--cyan);width:1.5em}
+.tape .ln.tot{border-top:1px solid var(--line);padding-top:3px;margin-bottom:6px;font-weight:700}
+.tape .ln.tot .d{color:var(--muted);font-weight:400;font-size:13px}
+.tape .empty{color:var(--muted);font-family:var(--display);font-size:13px;line-height:1.5;margin:auto 0}
+.readout{display:grid;grid-template-columns:auto 1fr;align-items:baseline;gap:4px 12px;padding:4px 4px 0}
+.ro-op{font-family:var(--mono);font-size:26px;color:var(--cyan);min-width:1ch}
+.ro-val{font-family:var(--mono);font-size:44px;text-align:right;line-height:1.05;overflow-wrap:anywhere}
+.ro-sub{grid-column:1/-1;text-align:right;color:var(--muted);font-size:13px;min-height:1.2em}
+
+/* elapsed */
+.el-fields{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.field{display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--panel);text-align:left}
+.field.active{border-color:var(--cyan);box-shadow:inset 0 0 0 1px var(--cyan)}
+.fv{font-family:var(--mono);font-size:34px;letter-spacing:.04em}
+.fv .z{font-size:16px;color:var(--muted);margin-left:2px}
+.fv .ph{color:var(--muted)}
+.el-result{padding:14px;border-radius:12px;background:var(--panel2);display:grid;gap:4px}
+.el-result .big{font-family:var(--mono);font-size:48px;line-height:1.05}
+.el-result .sub{color:var(--muted);font-size:13px;min-height:1.2em}
+.el-result .row2{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.spacer{flex:1}
+
+/* flight plan */
+.summary{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:end;padding:10px 12px;border-radius:12px;background:var(--panel2)}
+.stat{display:flex;flex-direction:column;gap:2px;min-width:0}
+.stat .val{font-family:var(--mono);font-size:20px}
+.stat.total{align-items:center}
+.stat.total .val{font-size:32px;line-height:1}
+.stat.eta{align-items:flex-end}
+.tag{display:inline-block;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--amber);border:1px solid var(--amber);border-radius:4px;padding:1px 5px;margin-left:6px;vertical-align:2px}
+.list{flex:1;min-height:0;overflow-y:auto;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+.row{display:grid;grid-template-columns:2.6em 1fr 1fr 1fr;gap:8px;padding:7px 12px;font-family:var(--mono);font-size:15px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums;width:100%;text-align:right}
+.row.loc{grid-template-columns:2.6em 1fr 1fr 1fr 1fr}
+.row.noeta{grid-template-columns:2.6em 1fr 1fr}
+.stat.eta{border-radius:8px;padding:2px 4px;margin:-2px -4px;text-align:right}
+.stat.eta.unset .val{color:var(--cyan)}
+.stat.eta.active{box-shadow:0 0 0 1px var(--amber)}
+.row>span:first-child{text-align:left;color:var(--muted)}
+.row.head{position:sticky;top:0;background:var(--panel);font-family:var(--display);font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);z-index:1}
+.row .t{font-weight:700}
+.row .l{color:var(--muted)}
+.row.cur{box-shadow:inset 3px 0 0 var(--magenta)}
+.row.cur>span:first-child,.row.cur .t{color:var(--magenta)}
+.row.sel{background:var(--keyhi);box-shadow:inset 3px 0 0 var(--cyan)}
+.row.sel>span:first-child{color:var(--cyan)}
+.list .empty{padding:18px 14px;color:var(--muted);font-size:14px;line-height:1.5}
+.entry{display:grid;grid-template-columns:1fr auto;align-items:center;gap:2px 12px;padding:8px 12px;border-radius:12px;border:1px solid var(--cyan)}
+.entry.dep{border-color:var(--amber)}
+.entry-lbl{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--cyan)}
+.entry.dep .entry-lbl{color:var(--amber)}
+.entry-val{grid-row:span 2;font-family:var(--mono);font-size:34px;letter-spacing:.08em}
+.entry-val .ph{color:var(--muted)}
+.entry-last{font-size:12px;color:var(--muted);min-height:1.2em}
+.chips{display:flex;gap:6px;overflow-x:auto;flex:none;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;padding:7px 11px;border-radius:999px;border:1px solid var(--line);background:var(--panel);font-size:12px;white-space:nowrap}
+.chip b{color:var(--cyan);font-weight:700}
+.chip.warn{border-color:var(--amber);color:var(--amber)}
+.chip.act{border-color:var(--cyan);color:var(--cyan)}
+
+/* crew rest — sized to land on one screen */
+.card.rtight{gap:8px;padding:10px 12px;flex:none}
+.card.rtight .inp input{font-size:17px;padding:7px 9px}
+.card.rtight .lbl{font-size:10px}
+.card.rtight .inp .hint{font-size:11px;min-height:1.1em;line-height:1.25}
+.rrow{display:flex;gap:10px;align-items:flex-end}
+.rrow .seg{flex:1 1 auto;min-width:0}
+.rrow .seg button{padding:7px 4px;font-size:12.5px}
+.rho{flex:0 0 5.4em}
+.rho input{width:100%;min-width:0;text-align:center}
+.check.r5{flex:0 0 auto;font-size:12px;white-space:nowrap;padding-bottom:6px}
+.rout{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:10px 12px}
+.rout .status{padding:8px 10px;font-size:13px;line-height:1.35}
+.rout .sched td{padding:6px 6px;font-size:14px}
+.rout .sched th{padding:3px 6px}
+.rout .totals{gap:6px}
+.rout .totals div{padding:6px 9px;font-size:12px}
+.rout .totals b{font-size:15px}
+@media (max-height:760px){
+  .card.rtight{gap:6px;padding:8px 10px}
+  .card.rtight .inp input{font-size:16px;padding:6px 8px}
+  .rout{padding:8px 10px}
+  .rout .sched td{padding:4px 6px}
+}
+/* crew rest */
+.card{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:12px;display:grid;gap:12px}
+.card h2{margin:0;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:400;display:flex;justify-content:space-between;align-items:center}
+/* The trip date is a plain text field, not input[type=date]: the native control
+   is a WebKit widget whose inner shadow parts size themselves and it kept
+   spilling past its column whatever was set on the outer box. Typing 8 digits
+   auto-formats, and the buttons cover the common cases. */
+.dater{display:flex;gap:6px;min-width:0;align-items:stretch}
+.dater input{flex:1 1 auto;min-width:0}
+.dater button{flex:0 0 auto;border:1px solid var(--line);border-radius:8px;background:var(--panel2);
+  color:var(--cyan);font-size:13px;padding:0 10px;min-width:2.4em;white-space:nowrap}
+.dater button:active{background:var(--keyhi)}
+#rPairs{display:grid;gap:6px}
+#rPairsBox{display:grid;gap:8px}
+.prow{display:flex;gap:6px;flex-wrap:wrap;align-items:center;min-height:34px}
+.porder{font-family:var(--display);font-size:11px;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--muted);flex:0 0 5.2em}
+.prow.first .porder{color:var(--cyan)}
+.pchip{border:1px solid var(--line);border-radius:999px;padding:7px 12px;font-size:14px;
+  background:var(--panel2);display:flex;align-items:center;gap:7px}
+.pchip[aria-pressed="true"]{border-color:var(--cyan);color:var(--cyan);box-shadow:inset 0 0 0 1px var(--cyan)}
+.calwrap{position:relative;overflow:hidden;flex:0 0 auto;width:2.9em;display:block}
+.calwrap>button{width:100%;height:100%;border:1px solid var(--line);border-radius:8px;
+  background:var(--panel2);color:var(--cyan);display:grid;place-items:center;padding:0}
+.calwrap>button svg{width:18px;height:18px}
+.calwrap>input[type="date"]{position:absolute;top:0;left:0;width:100%;height:100%;
+  opacity:0;padding:0;margin:0;border:0;background:none;-webkit-appearance:none;appearance:none}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;min-width:0}
+.grid2>*{min-width:0}
+.inp{display:grid;gap:4px;min-width:0}
+.inp input{width:100%;font-family:var(--mono);font-size:18px;padding:9px 10px;border-radius:8px;border:1px solid var(--line);background:var(--panel2)}
+.inp input.name{font-family:var(--display);font-size:16px}
+.inp .hint{font-size:12px;color:var(--muted);min-height:1.2em}
+.seg{display:flex;border:1px solid var(--line);border-radius:9px;padding:3px;gap:3px;background:var(--panel2)}
+.seg button{flex:1;padding:8px 6px;border-radius:7px;font-size:13px;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--panel);color:var(--fg);box-shadow:0 0 0 1px var(--line)}
+.rounds{display:grid;gap:8px}
+.round{display:grid;grid-template-columns:5.2em 1fr auto 34px;align-items:center;gap:8px}
+.round .rl{font-size:13px;color:var(--muted)}
+.round input{width:100%;font-family:var(--mono);font-size:18px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--panel2)}
+.round .rn{font-size:12px;color:var(--muted);white-space:nowrap}
+.round .x{height:34px;border-radius:8px;color:var(--muted);border:1px solid var(--line)}
+.check{display:flex;align-items:center;gap:8px;font-size:14px}
+.check input{width:18px;height:18px;accent-color:var(--cyan)}
+.status{padding:10px 12px;border-radius:10px;font-size:14px;line-height:1.45;background:var(--panel2);border-left:3px solid var(--cyan)}
+.status.warn{border-left-color:var(--amber);color:var(--fg)}
+.status.warn b{color:var(--amber)}
+.status.err{border-left-color:var(--amber)}
+.tl{position:relative;height:30px;border-radius:6px;background:var(--panel2);overflow:hidden;border:1px solid var(--line)}
+.tl .seg-b{position:absolute;top:0;bottom:0;background:repeating-linear-gradient(135deg,var(--line) 0 4px,transparent 4px 8px)}
+.tl .br{position:absolute;top:4px;bottom:4px;border-radius:3px;font-family:var(--mono);font-size:11px;color:var(--onaccent);display:flex;align-items:center;justify-content:center;overflow:hidden;white-space:nowrap}
+.tl .nowline{position:absolute;top:0;bottom:0;width:2px;background:var(--fg)}
+.tl-lbls{display:flex;justify-content:space-between;font-family:var(--mono);font-size:12px;color:var(--muted);margin-top:4px}
+.sched{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+.sched th{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:400;text-align:right;padding:4px 6px;border-bottom:1px solid var(--line)}
+.sched th:first-child,.sched td:first-child{text-align:left}
+.sched td{font-family:var(--mono);font-size:15px;text-align:right;padding:8px 6px;border-bottom:1px solid var(--line)}
+.sched td.who{font-family:var(--display);font-size:14px;white-space:nowrap}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:7px;vertical-align:0}
+.sched tr.now td{background:var(--keyhi)}
+.pill{font-family:var(--display);font-size:10px;letter-spacing:.08em;border-radius:4px;padding:1px 5px;margin-left:6px;background:var(--magenta);color:var(--onaccent)}
+.totals{display:flex;gap:8px;flex-wrap:wrap}
+.totals div{padding:8px 10px;border-radius:8px;background:var(--panel2);font-size:13px}
+.totals b{font-family:var(--mono);font-size:16px;margin-left:6px}
+.scrollx{overflow-x:auto}
+/* crew */
+.cw-view{flex:1;display:flex;flex-direction:column;gap:10px;min-height:0}
+.cw-top{display:flex;gap:8px;flex:none}
+.cw-top input{flex:1;min-width:0;font-family:var(--display);font-size:16px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--panel2)}
+.cw-ib{flex:none;width:44px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--cyan);font-size:24px;line-height:1}
+.cw-new{display:flex;gap:8px;flex:none}
+.cw-new input{flex:1;min-width:0;font-family:var(--display);font-size:16px;padding:10px 12px;border-radius:10px;border:1px solid var(--cyan);background:var(--panel2)}
+.cwrow{display:grid;grid-template-columns:1fr auto;gap:1px 10px;padding:9px 12px;border-bottom:1px solid var(--line);width:100%;text-align:left}
+.cwrow:active{background:var(--keyhi)}
+.cwrow .n{font-size:16px}
+.cwrow .m{font-size:12px;color:var(--muted)}
+.cwrow .r{grid-row:span 2;align-self:center;text-align:right;font-family:var(--mono);font-size:13px;color:var(--muted);white-space:nowrap}
+.cwrow .r b{color:var(--fg);font-weight:400}
+.cw-bar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex:none}
+.cw-bar .cnt{font-size:12px;color:var(--muted)}
+.cw-det{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;display:flex;flex-direction:column;gap:10px;padding-bottom:6px}
+.cw-hd{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex:none}
+.cw-hd .nm{font-size:22px;font-weight:700;line-height:1.15}
+.cw-hd .sb{font-size:12px;color:var(--muted);margin-top:3px}
+.cw-sec{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:10px 12px}
+.cw-sec h3{margin:0 0 6px;font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:400}
+.cw-sec ul{margin:0;padding-left:17px;display:grid;gap:5px;line-height:1.45}
+.cw-sec li{overflow-wrap:anywhere}
+.cw-sec.flights ul{font-family:var(--mono);font-size:13px;padding-left:0;list-style:none}
+.cw-sec.priv{border-color:var(--amber)}
+.cw-sec.priv summary{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--amber);cursor:pointer;list-style:none}
+.cw-sec.priv summary::-webkit-details-marker{display:none}
+.cw-sec.priv summary::after{content:' · tap to show';letter-spacing:0;text-transform:none;color:var(--muted)}
+.cw-sec.priv details[open] summary::after{content:''}
+.cw-sec.priv ul{margin-top:6px}
+.cw-hdb{display:flex;gap:14px;flex:none}
+.cw-sec h3{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.cw-sec h3 button{color:var(--cyan);font-size:19px;line-height:1;padding:0 2px;letter-spacing:0}
+.cw-it{display:block;width:100%;text-align:left;font:inherit;padding:5px 0 5px 15px;position:relative;line-height:1.45;overflow-wrap:anywhere}
+.cw-it::before{content:'\2022';position:absolute;left:2px;color:var(--muted)}
+.cw-it:active{color:var(--cyan)}
+.cw-none{color:var(--muted);font-size:13px;padding:2px 0}
+.cw-ed{display:grid;gap:8px;padding:6px 0}
+.cw-ed textarea{width:100%;font-family:var(--display);font-size:16px;line-height:1.4;padding:9px 10px;
+  border-radius:8px;border:1px solid var(--cyan);background:var(--panel2);color:var(--fg);resize:vertical;min-height:4.4em}
+.cw-edb{display:flex;gap:8px;align-items:center}
+.cw-edb button{border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-size:13px}
+.cw-edb .ok{background:var(--cyan);border-color:var(--cyan);color:var(--onaccent);font-weight:700}
+.cw-edb .del{color:var(--amber);border-color:var(--amber);margin-left:auto}
+.cw-chips{display:flex;flex-wrap:wrap;gap:6px}
+.cw-chips button{border:1px solid var(--line);border-radius:999px;padding:7px 11px;font-size:12px;color:var(--muted);background:var(--panel)}
+.cw-f{display:grid;gap:8px;min-width:0}
+.cw-f label{display:grid;gap:4px;min-width:0}
+/* width+min-width or an intrinsically wide control (a date field especially)
+   refuses to shrink and overruns the grid column */
+.cw-f input{width:100%;min-width:0;max-width:100%;font-family:var(--display);font-size:16px;padding:9px 10px;border-radius:8px;border:1px solid var(--line);background:var(--panel2)}
+.trow{display:grid;grid-template-columns:auto 1fr;gap:1px 10px;padding:9px 12px;border-bottom:1px solid var(--line);width:100%;text-align:left}
+.trow:active{background:var(--keyhi)}
+.trow .d{font-family:var(--mono);font-size:13px;color:var(--muted);grid-column:1}
+.trow .rt{font-family:var(--mono);font-size:16px;grid-column:2}
+.trow .who{grid-column:1/-1;font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+.crewrow{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)}
+.crewrow:last-child{border-bottom:0}
+.crewrow .nm2{flex:1;min-width:0;overflow-wrap:anywhere}
+.rolechip{flex:none;font-family:var(--mono);font-size:12px;letter-spacing:.06em;border:1px solid var(--cyan);
+  color:var(--cyan);border-radius:999px;padding:4px 10px;min-width:4.2em;text-align:center}
+.crewrow .rm{flex:none;color:var(--amber);border:1px solid var(--line);border-radius:8px;width:32px;height:32px}
+.cw-add{display:flex;gap:8px;align-items:flex-end}
+.cw-add input{flex:1;min-width:0;font-family:var(--display);font-size:16px;padding:9px 10px;border-radius:8px;border:1px solid var(--line);background:var(--panel2)}
+.back{color:var(--cyan);font-size:14px;flex:none;padding:4px 0}
+.upd{position:fixed;left:50%;transform:translateX(-50%);z-index:30;
+  bottom:calc(env(safe-area-inset-bottom,0px) + 56px);display:flex;align-items:center;gap:9px;
+  padding:10px 15px;border-radius:999px;background:var(--cyan);color:var(--onaccent);
+  font-size:13px;font-weight:700;letter-spacing:.02em;border:0;
+  box-shadow:0 6px 22px rgba(0,0,0,.38)}
+.upd:active{filter:brightness(1.1)}
+.settings .srow{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.settings .srow .mono{color:var(--muted);font-size:13px}
+@media (max-height:700px){.keypad{grid-auto-rows:46px;gap:6px}.ro-val{font-size:38px}.fv{font-size:30px}}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="bar">
+      <div class="brand">Block<span>·</span>Time</div>
+      <div class="clock">
+        <div class="zclock" id="zclock">----Z</div>
+        <button class="gear" id="gear" aria-label="Settings" aria-expanded="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M5.5 18.5l1.7-1.7M16.8 7.2l1.7-1.7"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="settings" id="settings" hidden>
+      <label>Local offset from Z <span class="inp" style="width:7em"><input id="sOff" inputmode="text" placeholder="off" autocomplete="off"></span></label>
+      <p>Example: −4 or +5:30. Leave blank to show Zulu only. When set, flight plan ETAs and crew rest times also show local.</p>
+      <label class="srow"><span>My seat</span>
+        <span class="seg" id="sSeat" style="max-width:15em">
+          <button type="button" data-v="CA">CA</button>
+          <button type="button" data-v="FO">FO</button>
+          <button type="button" data-v="RP1">RP1</button>
+          <button type="button" data-v="RP2">RP2</button>
+        </span></label>
+      <p>Which seat you occupy. Crew you add to a trip take the other seats automatically, so adding
+      people needs no extra taps.</p>
+      <div class="srow"><span>Version</span><span class="mono" id="sVer">—</span></div>
+      <div class="srow"><span><button type="button" class="link" id="sCheck">Check for update</button></span><span class="mono" id="sCheckMsg"></span></div>
+      <p>Updates install in the background. When one is ready a button appears at the bottom of the screen &mdash; tap it to switch over. Works offline either way.</p>
+      <div class="srow"><span><button type="button" class="link" id="sShare">Share this app</button>
+        <button type="button" class="link" id="sQr" style="margin-left:16px">QR code</button></span>
+        <span class="mono" id="sShareMsg"></span></div>
+      <div id="sQrBox" hidden style="justify-self:center;padding:4px 0"></div>
+      <p>Sends the web address and nothing else &mdash; no crew notes, no logbook, no settings. Whoever
+      opens it gets an empty app of their own. The QR works on any phone, which is handy for Android
+      crew &mdash; AirDrop only talks to Apple.</p>
+      <details id="sSync">
+        <summary class="lbl" style="cursor:pointer">Crew sync (WebDAV) &mdash; optional</summary>
+        <div class="cw-f" style="margin-top:10px">
+          <label><span class="lbl">Server</span><input id="dvUrl" placeholder="https://cloud.example.com" autocomplete="off" inputmode="url"></label>
+          <label><span class="lbl">Username</span><input id="dvUser" autocomplete="username"></label>
+          <label><span class="lbl">App password</span><input id="dvPass" type="password" autocomplete="current-password"></label>
+          <label><span class="lbl">Folder</span><input id="dvFolder" placeholder="Crew" autocomplete="off"></label>
+          <div class="cw-edb"><button type="button" class="ok" id="dvSync">Sync now</button>
+            <button type="button" id="dvTest">Test</button></div>
+          <p class="cw-none" id="dvMsg"></p>
+          <p>Works with Nextcloud, ownCloud, Synology and anything else speaking WebDAV. Use an
+          <b>app password</b>, never your account password &mdash; it is stored only on this device and you
+          can revoke it on the server. Newest edit wins, per person, so notes made in Obsidian and
+          notes made here both survive. Use a folder of its own &mdash; the one holding your crew
+          notes, not your notes in general: files here get written back in this app&rsquo;s format. As a
+          safety net, any file without <b>tags: [crew]</b> in its frontmatter is ignored rather than
+          rewritten. If it fails with a network error the server needs to allow this site
+          (on Nextcloud: the WebAppPassword app).</p>
+        </div>
+      </details>
+    </div>
+  </header>
+
+  <main>
+    <!-- CALCULATOR -->
+    <section id="calc" class="screen" hidden>
+      <div class="tapewrap">
+        <div class="tape-head"><span class="lbl">Tape</span><button class="link" id="cClearTape">Clear tape</button></div>
+        <div class="tape" id="cTape"></div>
+      </div>
+      <div class="readout">
+        <div class="ro-op" id="cOp"></div>
+        <div class="ro-val" id="cVal">0:00</div>
+        <div class="ro-sub" id="cSub"></div>
+      </div>
+      <div class="keypad" id="cKeys"></div>
+    </section>
+
+    <!-- ELAPSED -->
+    <section id="elapsed" class="screen" hidden>
+      <div class="el-fields">
+        <button class="field active" data-f="start"><span class="lbl">From</span><span class="fv" id="eStartV"></span></button>
+        <button class="field" data-f="end"><span class="lbl">To</span><span class="fv" id="eEndV"></span></button>
+      </div>
+      <div class="el-result">
+        <span class="lbl">Elapsed</span>
+        <span class="big" id="eRes">—</span>
+        <div class="row2"><span class="sub" id="eSub">Type 4 digits for each time. It moves to the next field on its own.</span><button class="link" id="eToCalc" hidden>Send to calculator</button></div>
+      </div>
+      <div class="spacer"></div>
+      <div class="keypad" id="eKeys"></div>
+    </section>
+
+    <!-- FLIGHT PLAN -->
+    <section id="plan" class="screen" hidden>
+      <div class="summary">
+        <div class="stat"><span class="lbl">Points</span><span class="val" id="pCount">0</span></div>
+        <div class="stat total"><span class="lbl" id="pTotLbl">Total time</span><span class="val" id="pTotal">0:00</span></div>
+        <button type="button" class="stat eta" id="pEtaBtn"><span class="lbl" id="pEtaLbl">ETA</span><span class="val" id="pEta">—</span></button>
+      </div>
+      <div class="list" id="pList"></div>
+      <div class="entry" id="pEntry">
+        <div class="entry-lbl" id="pLbl"></div>
+        <div class="entry-val" id="pVal"></div>
+        <div class="entry-last" id="pLast"></div>
+      </div>
+      <div class="chips" id="pChips"></div>
+      <div class="keypad" id="pKeys"></div>
+    </section>
+
+    <!-- CREW REST -->
+    <!-- One screen, no page scroll: the inputs are fixed and only the schedule
+         scrolls if a long custom split makes it tall. -->
+    <section id="rest" class="screen" hidden>
+      <div class="card rtight">
+        <div class="grid2">
+          <div class="inp"><span class="lbl">Takeoff (Z) <span id="rExample" class="tag" hidden>Example</span></span><input id="rOff" inputmode="numeric" maxlength="5" autocomplete="off"><span class="hint" id="rOffH"></span></div>
+          <div class="inp"><span class="lbl">Landing (Z)</span><input id="rOn" inputmode="numeric" maxlength="5" autocomplete="off"><span class="hint" id="rOnH"></span></div>
+          <div class="inp"><span class="lbl">Rest starts (Z)</span><input id="rRs" inputmode="numeric" maxlength="5" placeholder="T/O+30" autocomplete="off"><span class="hint" id="rRsH"></span></div>
+          <div class="inp"><span class="lbl">Rest ends before LDG</span><input id="rEb" inputmode="numeric" maxlength="5" autocomplete="off"><span class="hint" id="rEbH"></span></div>
+        </div>
+        <div class="rrow">
+          <div class="seg" id="rCrew">
+            <button type="button" data-v="3">3 pilots</button>
+            <button type="button" data-v="4">4 pilots</button>
+          </div>
+          <div class="inp rho"><span class="lbl">Handover</span><input id="rHo" inputmode="numeric" maxlength="4" autocomplete="off"></div>
+        </div>
+        <div class="rrow" id="rSplitCard">
+          <div class="seg" id="rMode">
+            <button type="button" data-v="even">Even</button>
+            <button type="button" data-v="custom">Custom rounds</button>
+          </div>
+          <label class="check r5"><input type="checkbox" id="rRound5"> To 5 min</label>
+        </div>
+        <div id="rCustom" class="rounds"></div>
+      </div>
+
+      <div id="rOut" class="rout"></div>
+    </section>
+
+    <!-- CREW -->
+    <section id="crew" class="screen" hidden>
+      <div class="seg" id="cwSeg" style="flex:none">
+        <button type="button" data-v="trips">Flights</button>
+        <button type="button" data-v="people">People</button>
+      </div>
+      <div class="cw-view" id="cwListView">
+        <div class="cw-top">
+          <input id="cwSearch" type="search" placeholder="Search crew" autocomplete="off" enterkeyhint="search">
+          <button type="button" class="cw-ib" id="cwAdd" aria-label="Add person">+</button>
+        </div>
+        <div class="cw-new" id="cwNew" hidden>
+          <input id="cwNewName" placeholder="Name" autocomplete="off" enterkeyhint="done">
+          <button type="button" class="cw-ib" id="cwNewSave" aria-label="Save">&#10003;</button>
+        </div>
+        <div class="list" id="cwRows"></div>
+        <div class="cw-bar">
+          <button type="button" class="link" id="cwImport">Import</button>
+          <span class="cnt" id="cwCount"></span>
+          <button type="button" class="link" id="cwExport">Export</button>
+        </div>
+        <input type="file" id="cwFile" accept=".md,.zip,.json,text/markdown,application/zip" multiple hidden>
+      </div>
+      <div class="cw-view" id="cwTripsView" hidden>
+        <div class="cw-top">
+          <button type="button" class="key go" id="tNew" style="height:42px;border-radius:10px">&#43; New flight</button>
+        </div>
+        <div class="status" id="tCurrency" hidden></div>
+        <div class="list" id="tRows"></div>
+        <div class="cw-bar"><span class="cnt" id="tCount"></span></div>
+      </div>
+      <div class="cw-view" id="cwTripView" hidden>
+        <div class="cw-hd">
+          <div><div class="nm" id="tdTitle">Trip</div><div class="sb" id="tdSub"></div></div>
+          <button type="button" class="back" id="tBack">&#8592; Trips</button>
+        </div>
+        <div class="cw-det" id="tdBody"></div>
+      </div>
+      <div class="cw-view" id="cwDetView" hidden>
+        <div class="cw-hd">
+          <div><div class="nm" id="cwdName"></div><div class="sb" id="cwdSub"></div></div>
+          <span class="cw-hdb"><button type="button" class="back" id="cwEditHdr">Edit</button><button type="button" class="back" id="cwBack">&#8592; Crew</button></span>
+        </div>
+        <div class="cw-det" id="cwdBody"></div>
+      </div>
+    </section>
+  </main>
+
+  <nav role="tablist">
+    <button role="tab" data-tab="calc">Calc</button>
+    <button role="tab" data-tab="elapsed">Elapsed</button>
+    <button role="tab" data-tab="plan">OFP</button>
+    <button role="tab" data-tab="rest">Rest</button>
+    <button role="tab" data-tab="crew">Log</button>
+  </nav>
+</div>
+
+<script>
+(function(){
+const $=s=>document.querySelector(s);
+const store={
+  get(k,d){try{const v=localStorage.getItem('bt:'+k);return v==null?d:JSON.parse(v)}catch(e){return d}},
+  set(k,v){try{localStorage.setItem('bt:'+k,JSON.stringify(v))}catch(e){}}
+};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ---------- time helpers ---------- */
+function digits(s){return String(s??'').replace(/\D/g,'')}
+function parseDur(s){s=digits(s);if(!s)return 0;if(s.length<=2)return +s;return (+s.slice(0,-2))*60+(+s.slice(-2))}
+function fmtDur(m){const neg=m<0;m=Math.round(Math.abs(m));return (neg?'−':'')+Math.floor(m/60)+':'+String(m%60).padStart(2,'0')}
+function parseClock(s){s=digits(s);if(s.length<3||s.length>4)return null;s=s.padStart(4,'0');const h=+s.slice(0,2),m=+s.slice(2);if(h>23||m>59)return null;return h*60+m}
+function fmtClock(m){m=((Math.round(m)%1440)+1440)%1440;return String(Math.floor(m/60)).padStart(2,'0')+String(m%60).padStart(2,'0')}
+function nowZ(){const d=new Date();return d.getUTCHours()*60+d.getUTCMinutes()}
+function dec(m){return (m/60).toFixed(2)}
+
+/* ---------- local offset ---------- */
+let OFF=null;
+function parseOffset(s){
+  s=String(s||'').trim().replace('−','-');if(!s)return null;
+  const neg=s.startsWith('-');s=s.replace(/^[+-]/,'');
+  let m;
+  if(s.includes(':')){const [h,mm]=s.split(':');m=(+h||0)*60+(+mm||0)}
+  else m=Math.round(parseFloat(s)*60);
+  if(isNaN(m)||m>14*60)return null;
+  return neg?-m:m;
+}
+function loc(z){return OFF==null?'':fmtClock(z+OFF)+'L'}
+
+/* ---------- keypad builder ---------- */
+function keypad(el,keys,onKey){
+  el.innerHTML='';
+  keys.forEach(k=>{
+    const b=document.createElement('button');
+    b.type='button';b.className='key '+(k.c||'');b.dataset.k=k.k;b.textContent=k.t??k.k;
+    if(k.cs)b.style.gridColumn='span '+k.cs;
+    if(k.rs)b.style.gridRow='span '+k.rs;
+    if(k.a)b.setAttribute('aria-label',k.a);
+    el.appendChild(b);
+  });
+  el.addEventListener('click',e=>{const b=e.target.closest('.key');if(b)onKey(b.dataset.k)});
+}
+
+/* =========================================================
+   CALCULATOR
+   ========================================================= */
+const C={acc:null,op:null,entry:'',tape:store.get('c.tape',[]),eq:false};
+const numOp=o=>o==='×'||o==='÷';
+function cApply(a,op,b){if(op==='+')return a+b;if(op==='−')return a-b;if(op==='×')return a*b;if(op==='÷')return b?a/b:a;return b}
+function cOperand(){return numOp(C.op)?parseFloat(C.entry):parseDur(C.entry)}
+function cOperandText(){return numOp(C.op)?C.entry:fmtDur(parseDur(C.entry))}
+function cPush(line){C.tape.push(line);if(C.tape.length>300)C.tape.splice(0,C.tape.length-300);store.set('c.tape',C.tape)}
+function cFold(){
+  if(!C.entry)return;
+  if(C.acc===null){C.acc=parseDur(C.entry);cPush({o:'',t:fmtDur(C.acc)})}
+  else{const v=cOperand();cPush({o:C.op,t:cOperandText()});C.acc=cApply(C.acc,C.op,v)}
+  C.entry='';
+}
+function cKey(k){
+  if(/^\d+$/.test(k)){
+    if(C.eq){C.acc=null;C.op=null;C.eq=false;if(C.tape.length)cPush({sep:1})}
+    if(C.entry.length+k.length<=6)C.entry+=k;
+  }else if(k==='back'){C.entry=C.entry.slice(0,-1)}
+  else if(k==='C'){
+    if(C.entry)C.entry='';
+    else{if(C.acc!==null&&!C.eq)cPush({sep:1});C.acc=null;C.op=null;C.eq=false}
+  }else if('+−×÷'.includes(k)){
+    if(C.acc===null&&!C.entry)return;
+    cFold();C.op=k;C.eq=false;
+  }else if(k==='='){
+    if(C.acc===null&&!C.entry)return;
+    if(C.acc===null){cFold()}else if(C.entry){cFold()}
+    cPush({o:'=',t:fmtDur(C.acc),tot:1,d:dec(C.acc)});
+    C.op=null;C.eq=true;
+  }
+  cRender();
+}
+function cRender(){
+  const t=$('#cTape');
+  if(!C.tape.length){t.innerHTML='<div class="empty">Type times as digits: 130 is 1:30, 45 is 0:45. Use × and ÷ with plain numbers, like ÷ 3 to split rest.</div>'}
+  else t.innerHTML=C.tape.map(l=>l.sep?'<div style="height:10px"></div>':
+    `<div class="ln${l.tot?' tot':''}"><span class="o">${esc(l.o||'')}</span><span>${l.tot?`<span class="d">${l.d} h&nbsp;&nbsp;</span>`:''}${esc(l.t)}</span></div>`).join('');
+  t.scrollTop=t.scrollHeight;
+  $('#cOp').textContent=C.op||(C.eq?'=':'');
+  let v,sub='';
+  if(C.entry){
+    v=C.acc!==null&&numOp(C.op)?C.entry:fmtDur(parseDur(C.entry));
+    if(C.acc!==null&&C.op){const r=cApply(C.acc,C.op,cOperand());sub=`${fmtDur(C.acc)} ${C.op} ${cOperandText()} = ${fmtDur(r)}`}
+  }else{v=fmtDur(C.acc??0);sub=C.acc!==null?`${dec(C.acc)} hours`:''}
+  $('#cVal').textContent=v;$('#cSub').textContent=sub;
+}
+keypad($('#cKeys'),[
+  {k:'C',c:'fn'},{k:'back',t:'⌫',c:'fn',a:'Delete'},{k:'÷',c:'op'},{k:'×',c:'op'},
+  {k:'7'},{k:'8'},{k:'9'},{k:'−',c:'op',a:'Minus'},
+  {k:'4'},{k:'5'},{k:'6'},{k:'+',c:'op'},
+  {k:'1'},{k:'2'},{k:'3'},{k:'=',c:'go',rs:2},
+  {k:'0',cs:2},{k:'00'}
+],cKey);
+$('#cClearTape').onclick=()=>{C.tape=[];store.set('c.tape',[]);cRender()};
+
+/* =========================================================
+   ELAPSED
+   ========================================================= */
+const E={start:'',end:'',f:'start',fresh:false};
+function eKey(k){
+  if(/^\d$/.test(k)){
+    if(E.fresh){E[E.f]='';E.fresh=false}
+    if(E[E.f].length>=4){E[E.f]=''}
+    E[E.f]+=k;
+    if(E[E.f].length===4&&E.f==='start'){E.f='end';E.fresh=true}
+  }else if(k==='back'){E[E.f]=E[E.f].slice(0,-1);E.fresh=false}
+  else if(k==='now'){E[E.f]=fmtClock(nowZ());if(E.f==='start'){E.f='end';E.fresh=true}}
+  else if(k==='clr'){E.start='';E.end='';E.f='start';E.fresh=false}
+  eRender();
+}
+function eShow(v){const p='----';return `${esc(v)}<span class="ph">${p.slice(v.length)}</span><span class="z">Z</span>`}
+let eMin=null;
+function eRender(){
+  $('#eStartV').innerHTML=eShow(E.start);$('#eEndV').innerHTML=eShow(E.end);
+  document.querySelectorAll('.field').forEach(b=>b.classList.toggle('active',b.dataset.f===E.f));
+  const a=E.start.length===4?parseClock(E.start):null,b=E.end.length===4?parseClock(E.end):null;
+  eMin=null;
+  if(E.start.length===4&&a===null){$('#eRes').textContent='—';$('#eSub').textContent='From time isn’t a valid HHMM.'}
+  else if(E.end.length===4&&b===null){$('#eRes').textContent='—';$('#eSub').textContent='To time isn’t a valid HHMM.'}
+  else if(a!==null&&b!==null){
+    let d=b-a;const roll=d<0;if(roll)d+=1440;eMin=d;
+    $('#eRes').textContent=fmtDur(d);
+    let s=`${dec(d)} hours`;if(roll)s+=' · crosses 0000Z';
+    if(OFF!=null)s+=` · ${loc(a)}–${loc(b)}`;
+    $('#eSub').textContent=s;
+  }else{$('#eRes').textContent='—';$('#eSub').textContent='Type 4 digits for each time. It moves to the next field on its own.'}
+  $('#eToCalc').hidden=eMin===null;
+}
+document.querySelectorAll('.field').forEach(b=>b.onclick=()=>{E.f=b.dataset.f;E.fresh=true;eRender()});
+$('#eToCalc').onclick=()=>{
+  if(eMin===null)return;
+  if(C.eq){C.acc=null;C.op=null;C.eq=false;if(C.tape.length)cPush({sep:1})}
+  const h=Math.floor(eMin/60),m=eMin%60;C.entry=String(h)+String(m).padStart(2,'0');
+  if(C.acc!==null&&!C.op)C.op='+';
+  cRender();showTab('calc');
+};
+keypad($('#eKeys'),[
+  {k:'7'},{k:'8'},{k:'9'},{k:'back',t:'⌫',c:'fn',a:'Delete'},
+  {k:'4'},{k:'5'},{k:'6'},{k:'now',t:'Now',c:'fn'},
+  {k:'1'},{k:'2'},{k:'3'},{k:'clr',t:'Clear',c:'fn',rs:2},
+  {k:'0',cs:3}
+],eKey);
+
+/* =========================================================
+   FLIGHT PLAN
+   ========================================================= */
+const P={legs:store.get('p.legs',null),dep:store.get('p.dep',''),mode:store.get('p.mode',2),sel:null,entry:'',target:'leg',last:'',example:false,confirm:false};
+if(P.legs===null){P.legs=[14,23,41,58,62,55,49,37,18,9];P.dep='0215';P.example=true}
+const MODES=[2,3,'enter'];
+const modeMax=()=>P.mode===2?2:P.mode===3?3:5;
+function pSave(){if(P.example)return;store.set('p.legs',P.legs);store.set('p.dep',P.dep)}
+function pClear(){P.legs=[];P.dep='';P.sel=null;P.entry='';P.target='dep';P.example=false;P.last='';pSave()}
+function pCommit(){
+  if(P.target==='dep'){
+    const c=parseClock(P.entry);P.entry='';
+    if(c===null){P.last='Start time must be HHMM, like 0215';return}
+    P.dep=fmtClock(c);P.target='leg';P.last=`Start ${P.dep}Z · ETAs updated`;pSave();return;
+  }
+  const v=parseDur(P.entry);P.entry='';
+  if(P.sel!==null){
+    const i=P.sel;P.legs[i]=v;P.last=`WPT ${i+1} changed to ${fmtDur(v)}`;
+    P.sel=i+1<P.legs.length?i+1:null;
+  }else{
+    P.legs.push(v);
+    const tot=P.legs.reduce((s,x)=>s+x,0);
+    P.last=`WPT ${P.legs.length} +${fmtDur(v)} → ${fmtDur(tot)}`;
+  }
+  pSave();
+}
+function pKey(k){
+  P.confirm=false;
+  if(k==='back'){P.entry=P.entry.slice(0,-1)}
+  else if(k==='undo'){
+    if(P.entry)P.entry='';
+    else if(P.target==='dep')P.target='leg';
+    else if(P.sel!==null)P.sel=null;
+    else if(P.legs.length&&!P.example){const v=P.legs.pop();P.last=`Removed WPT ${P.legs.length+1} (${fmtDur(v)})`;pSave()}
+  }else if(k==='enter'){
+    if(P.entry)pCommit();
+    else if(P.target==='dep')P.target='leg';
+    else if(P.sel!==null)P.sel=P.sel+1<P.legs.length?P.sel+1:null;
+  }else if(k==='off'){
+    P.target=P.target==='dep'?'leg':'dep';P.entry='';P.sel=null;
+    if(P.example&&P.target==='dep')pClear(),P.target='dep';
+  }else if(/^\d$/.test(k)){
+    if(P.example){pClear();P.target='leg'}
+    P.entry+=k;
+    if(P.target==='dep'){if(P.entry.length>=4)pCommit()}
+    else if(P.mode!=='enter'&&P.entry.length>=modeMax())pCommit();
+    else if(P.entry.length>5)P.entry=P.entry.slice(0,5);
+  }
+  pRender(k);
+}
+function pRender(k){
+  const n=P.legs.length,dep=P.dep?parseClock(P.dep):null;
+  let cum=0,rows='';
+  const hasLoc=OFF!=null&&dep!=null;
+  const noEta=dep==null;
+  const rc=noEta?' noeta':(hasLoc?' loc':'');
+  P.legs.forEach((l,i)=>{
+    cum+=l;
+    const cls=i===P.sel?' sel':(P.sel===null&&i===n-1?' cur':'');
+    rows+=`<button type="button" class="row${rc}${cls}" data-i="${i}"><span>${i+1}</span><span class="l">${fmtDur(l)}</span><span class="t">${fmtDur(cum)}</span>${noEta?'':`<span>${fmtClock(dep+cum)}Z</span>`}${hasLoc?`<span class="l">${loc(dep+cum)}</span>`:''}</button>`;
+  });
+  const list=$('#pList');
+  list.innerHTML=n?`<div class="row head${rc}"><span>Wpt</span><span>Leg</span><span>Total</span>${noEta?'':'<span>ETA</span>'}${hasLoc?'<span>Local</span>':''}</div>`+rows
+    :'<div class="empty">Type each leg time from the nav log. In 2-digit mode, 08 is 8 minutes and it advances to the next point on its own. Set the <b>Start</b> time first (top right, or the Start key) and every point gets an ETA.</div>';
+  $('#pCount').textContent=n;
+  $('#pTotal').innerHTML=fmtDur(cum)+(P.example?'<span class="tag">Example</span>':'');
+  const eb=$('#pEtaBtn');eb.classList.toggle('unset',dep==null);eb.classList.toggle('active',P.target==='dep');
+  $('#pEtaLbl').textContent=dep!=null?`ETA · start ${P.dep}Z`:'Start time';
+  $('#pEta').textContent=dep==null?'Set':(n?fmtClock(dep+cum)+'Z':P.dep+'Z');
+
+  const entry=$('#pEntry');entry.classList.toggle('dep',P.target==='dep');
+  let lbl,ph;
+  if(P.target==='dep'){lbl='Start time (Z) · 4 digits';ph='----'}
+  else if(P.sel!==null){lbl=`Editing WPT ${P.sel+1} · was ${fmtDur(P.legs[P.sel])}`;ph=P.mode==='enter'?'—':'_'.repeat(modeMax())}
+  else{lbl=`WPT ${n+1} · leg time`;ph=P.mode==='enter'?'—':'_'.repeat(modeMax())}
+  $('#pLbl').textContent=lbl;
+  const shown=P.entry?`${esc(P.entry)}<span class="ph">${P.mode==='enter'||P.target==='dep'&&false?'':ph.slice(P.entry.length)}</span>`:`<span class="ph">${ph}</span>`;
+  $('#pVal').innerHTML=shown;
+  $('#pLast').textContent=P.entry&&P.target==='leg'?`= ${fmtDur(parseDur(P.entry))}`:(P.last||(P.example?'Sample plan. Start typing to replace it.':''));
+
+  const chips=[];
+  const mlabel=P.mode===2?'2 digits · MM':P.mode===3?'3 digits · HMM':'Manual · Enter';
+  chips.push(`<button type="button" class="chip" data-c="mode">Advance <b>${mlabel}</b></button>`);
+  if(P.sel!==null){
+    chips.push(`<button type="button" class="chip act" data-c="ins">Insert point above ${P.sel+1}</button>`);
+    chips.push(`<button type="button" class="chip warn" data-c="del">Delete WPT ${P.sel+1}</button>`);
+    chips.push(`<button type="button" class="chip" data-c="done">Done editing</button>`);
+  }else if(n){
+    chips.push(`<button type="button" class="chip${P.confirm?' warn':''}" data-c="new">${P.confirm?`Tap again to clear ${n} points`:'New plan'}</button>`);
+  }
+  $('#pChips').innerHTML=chips.join('');
+
+  if(k==='scroll-sel'||P.sel!==null){const r=list.querySelector('.row.sel');if(r)r.scrollIntoView({block:'nearest'})}
+  else if(/^\d$|enter|undo/.test(k||'')||k==='init')list.scrollTop=list.scrollHeight;
+}
+$('#pEtaBtn').onclick=()=>pKey('off');
+$('#pList').addEventListener('click',e=>{
+  const r=e.target.closest('.row[data-i]');if(!r)return;
+  const i=+r.dataset.i;
+  if(P.example)return;
+  P.sel=P.sel===i?null:i;P.target='leg';P.entry='';P.confirm=false;pRender('scroll-sel');
+});
+let confirmT;
+$('#pChips').addEventListener('click',e=>{
+  const c=e.target.closest('.chip');if(!c)return;
+  const a=c.dataset.c;
+  if(a==='mode'){P.mode=MODES[(MODES.indexOf(P.mode)+1)%3];P.entry='';store.set('p.mode',P.mode)}
+  else if(a==='ins'){P.legs.splice(P.sel,0,0);P.last=`Inserted a point at ${P.sel+1}. Type its leg time.`;pSave()}
+  else if(a==='del'){const v=P.legs.splice(P.sel,1)[0];P.last=`Deleted WPT ${P.sel+1} (${fmtDur(v)})`;if(P.sel>=P.legs.length)P.sel=null;pSave()}
+  else if(a==='done'){P.sel=null}
+  else if(a==='new'){
+    if(P.confirm||P.example){pClear();P.confirm=false}
+    else{P.confirm=true;clearTimeout(confirmT);confirmT=setTimeout(()=>{P.confirm=false;pRender()},3000)}
+  }
+  if(a!=='new')P.confirm=false;
+  pRender(a==='new'?'init':'scroll-sel');
+});
+keypad($('#pKeys'),[
+  {k:'7'},{k:'8'},{k:'9'},{k:'back',t:'⌫',c:'fn',a:'Delete digit'},
+  {k:'4'},{k:'5'},{k:'6'},{k:'undo',t:'Undo',c:'fn'},
+  {k:'1'},{k:'2'},{k:'3'},{k:'enter',t:'Enter',c:'go',rs:2},
+  {k:'0',cs:2},{k:'off',t:'Start',c:'fn',a:'Set start time'}
+],pKey);
+
+/* =========================================================
+   CREW REST
+   ========================================================= */
+const savedR=store.get('r',null);
+/* Defaults follow how the crews actually fly: three pilots split evenly with
+   the relief pilot (RP1) taking the first break. Four pilots rest as two pairs,
+   labelled by the people in them (CA / FO and RP1 / RP2 until real names are
+   pulled from a trip), with the second pair resting first. All changeable. */
+const R=Object.assign({off:'0215',on:'2000',rs:'',eb:'100',ho:'0',crew:4,
+  mode:'custom',rounds:['300',''],round5:true},savedR||{});
+/* The rest schedule is just numbered periods — 1st rest, 2nd rest and so on.
+   Who takes which is a conversation on the flight deck, not data the app needs,
+   so there are no names, no pairs and no first-break choice to make here. */
+if(R.on==null&&R.ete!=null){const o=parseClock(R.off);R.on=o!=null?fmtClock(o+parseDur(R.ete)):'';R.rs=o!=null?fmtClock(o+parseDur(R.sb)):''}
+delete R.ete;delete R.sb;
+/* Settings saved by earlier versions carry fields the rest tab no longer has. */
+['names3','names4','roster4','first','first3','first4'].forEach(k=>{try{delete R[k]}catch(e){}});
+const DEFAULT_SB=30;
+/* minutes after takeoff that a Z clock time falls; null if unparseable */
+function relToOff(z,off){const c=parseClock(z);return c==null?null:(c-off+1440)%1440}
+let rExample=!savedR;
+const GCOL=['var(--cyan)','var(--magenta)','var(--sand)'];
+function rSave(){rExample=false;store.set('r',R);$('#rExample').hidden=true}
+function G(){return R.crew===4?2:3}
+const ord=n=>n+({1:'st',2:'nd',3:'rd'}[n%100>10&&n%100<20?0:n%10]||'th');
+
+function rCompute(){
+  const off=parseClock(R.off);
+  if(off===null)return{err:'Enter the takeoff time as HHMM Z.'};
+  const ete=relToOff(R.on,off);
+  if(!ete)return{err:'Enter the landing time as HHMM Z.'};
+  let sb=DEFAULT_SB;
+  if(digits(R.rs)){const s=relToOff(R.rs,off);if(s==null)return{err:'Rest start must be HHMM Z.'};if(s>=ete)return{err:'Rest start is after landing. Check the times.'};sb=s}
+  const eb=parseDur(R.eb),ho=parseDur(R.ho),g=G();
+  const W=ete-sb-eb;
+  if(W<=0)return{err:'Rest would start after it has to end. Check the rest start and landing buffer.'};
+  const rounds=R.mode==='even'?['']:(R.rounds.length?R.rounds:['']);
+  const N=rounds.length*g,avail=W-ho*(N-1);
+  const fixed=rounds.map(r=>digits(r)===''?null:parseDur(r));
+  const fixedSum=fixed.reduce((s,v)=>s+(v??0),0)*g;
+  const autoN=fixed.filter(v=>v===null).length;
+  let autoEach=null;
+  if(autoN){
+    const raw=(avail-fixedSum)/(autoN*g);
+    autoEach=R.round5?Math.floor(raw/5)*5:Math.floor(raw);
+    if(autoEach<=0)return{err:`The fixed rounds use ${fmtDur(fixedSum+ho*(N-1))} of a ${fmtDur(W)} rest window, leaving nothing for the auto round. Shorten a round or remove the auto round.`,fixed,autoEach:null};
+  }
+  const order=[...Array(g).keys()];
+  const breaks=[];let t=off+sb;
+  rounds.forEach((r,ri)=>{const len=fixed[ri]??autoEach;order.forEach(gi=>{breaks.push({g:gi,round:ri,start:t,end:t+len,len});t+=len+ho})});
+  const endRest=breaks.length?breaks[breaks.length-1].end:off+sb;
+  const latest=off+ete-eb;
+  const totals=[...Array(g)].map((_,i)=>breaks.filter(b=>b.g===i).reduce((s,b)=>s+b.len,0));
+  return{off,ete,sb,eb,W,breaks,endRest,latest,diff:latest-endRest,totals,autoEach,fixed,on:off+ete};
+}
+
+function rSplitVisible(){
+  /* three-pilot rest is always an even split, so the whole card is noise there */
+  const three=R.crew!==4;
+  $('#rSplitCard').hidden=three;
+  if(three&&R.mode!=='even'){R.mode='even';setSeg('#rMode',R.mode)}
+}
+function rBuildRounds(){
+  const box=$('#rCustom');
+  box.hidden=R.mode!=='custom';
+  if(R.mode!=='custom'){box.innerHTML='';return}
+  box.innerHTML=R.rounds.map((r,i)=>`<div class="round"><span class="rl">Round ${i+1}</span><input id="rRound${i}" data-i="${i}" inputmode="numeric" maxlength="5" placeholder="auto" value="${esc(r)}" autocomplete="off"><span class="rn" id="rRn${i}"></span><button type="button" class="x" data-x="${i}" aria-label="Remove round ${i+1}" ${R.rounds.length<2?'disabled style="opacity:.35"':''}>×</button></div>`).join('')
+    +`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><button type="button" class="link" id="rAdd">+ Add round</button><span class="hint lbl" style="text-transform:none;letter-spacing:0;font-size:12px">Leave a round blank to split what's left</span></div>`;
+  box.querySelectorAll('input').forEach(inp=>{
+    inp.oninput=()=>{R.rounds[+inp.dataset.i]=digits(inp.value);rSave();rRender()};
+    inp.onblur=()=>{const v=digits(inp.value);inp.value=v?fmtDur(parseDur(v)):''};
+    if(digits(inp.value))inp.value=fmtDur(parseDur(inp.value));
+  });
+  box.querySelectorAll('.x').forEach(b=>b.onclick=()=>{if(R.rounds.length<2)return;R.rounds.splice(+b.dataset.x,1);rSave();rBuildRounds();rRender()});
+  $('#rAdd').onclick=()=>{R.rounds.push('');rSave();rBuildRounds();rRender()};
+}
+
+function setSeg(sel,v){document.querySelectorAll(sel+' button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.v===String(v))))}
+$('#rCrew').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;R.crew=+b.dataset.v;setSeg('#rCrew',R.crew);rSave();rSplitVisible();rRender()});
+$('#rMode').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;R.mode=b.dataset.v;setSeg('#rMode',R.mode);rSave();rBuildRounds();rRender()});
+$('#rRound5').onchange=e=>{R.round5=e.target.checked;rSave();rRender()};
+
+const fields=[['rOff','off','clock'],['rOn','on','clock'],['rRs','rs','clock'],['rEb','eb','dur'],['rHo','ho','dur']];
+fields.forEach(([id,key,kind])=>{
+  const inp=$('#'+id);
+  inp.value=kind==='clock'?R[key]:(digits(R[key])?fmtDur(parseDur(R[key])):'0:00');
+  inp.oninput=()=>{R[key]=digits(inp.value);rSave();rRender()};
+  inp.onfocus=()=>{inp.select()};
+  inp.onblur=()=>{if(kind==='dur')inp.value=fmtDur(parseDur(R[key]));else{const c=parseClock(R[key]);if(c!==null)inp.value=fmtClock(c)}};
+});
+
+function rRender(){
+  const r=rCompute();
+  // field hints
+  const off=parseClock(R.off),ete=off!==null?relToOff(R.on,off):null;
+  const L=z=>OFF!=null?' · '+loc(z):'';
+  $('#rOffH').textContent=off!==null?(OFF!=null?loc(off):''):(digits(R.off)?'Use HHMM':'');
+  $('#rOnH').textContent=off!==null&&ete?`Flight time ${fmtDur(ete)}${L(off+ete)}`:(digits(R.on)&&parseClock(R.on)==null?'Use HHMM':'');
+  const rsRel=off!==null&&digits(R.rs)?relToOff(R.rs,off):null;
+  $('#rRsH').textContent=off===null?'':(digits(R.rs)?(rsRel!=null?`T/O +${fmtDur(rsRel)}${L(off+rsRel)}`:'Use HHMM'):`Blank uses ${fmtClock(off+DEFAULT_SB)}Z (T/O +0:30)`);
+  $('#rEbH').textContent=off!==null&&ete?`Rest closes ${fmtClock(off+ete-parseDur(R.eb))}Z`:'';
+  // round notes
+  if(R.mode==='custom')R.rounds.forEach((x,i)=>{const el=$('#rRn'+i);if(!el)return;
+    el.textContent=digits(x)?'each':(r.autoEach!=null?`auto · ${fmtDur(r.autoEach)} each`:'auto')});
+  const out=$('#rOut');
+  if(r.err){out.innerHTML=`<div class="status err">${esc(r.err)}</div>`;return}
+  let status;
+  const onLeft=r.on-r.endRest;
+  if(r.diff===0)status=`<div class="status">Rest window ${fmtDur(r.W)}, ${fmtClock(r.off+r.sb)}Z to ${fmtClock(r.latest)}Z. Breaks fill it exactly.</div>`;
+  else if(r.diff>0)status=`<div class="status">Rest window ${fmtDur(r.W)}, ${fmtClock(r.off+r.sb)}Z to ${fmtClock(r.latest)}Z. Last break ends ${fmtClock(r.endRest)}Z, leaving <b>${fmtDur(r.diff)}</b> unassigned before rest closes.</div>`;
+  else status=`<div class="status warn"><b>Over by ${fmtDur(-r.diff)}.</b> Last break ends ${fmtClock(r.endRest)}Z, ${onLeft>0?fmtDur(onLeft)+' before landing':'after landing'}. Rest was planned to close at ${fmtClock(r.latest)}Z.</div>`;
+  // timeline
+  const pct=m=>(m/r.ete*100).toFixed(3)+'%';
+  const nowRel=(nowZ()-r.off+1440)%1440;
+  let tl=`<div class="seg-b" style="left:0;width:${pct(r.sb)}"></div><div class="seg-b" style="left:${pct(r.ete-r.eb)};width:${pct(r.eb)}"></div>`;
+  r.breaks.forEach(b=>{const s=b.start-r.off;if(s>=r.ete)return;const w=Math.min(b.len,r.ete-s);
+    tl+=`<div class="br" style="left:${pct(s)};width:calc(${pct(w)} - 2px);background:${GCOL[b.g]}">${w/r.ete>.09?fmtDur(b.len):''}</div>`});
+  if(nowRel<r.ete)tl+=`<div class="nowline" style="left:${pct(nowRel)}" title="Now"></div>`;
+  const hasLoc=OFF!=null;
+  const rows=r.breaks.map((b,i)=>{
+    const s=b.start-r.off,e=b.end-r.off,isNow=nowRel>=s&&nowRel<e&&nowRel<r.ete;
+    return `<tr class="${isNow?'now':''}"><td class="who"><span class="dot" style="background:${GCOL[b.g]}"></span>${ord(i+1)} rest${isNow?'<span class="pill">NOW</span>':''}</td><td>${fmtClock(b.start)}Z</td><td>${fmtClock(b.end)}Z</td><td>${fmtDur(b.len)}</td>${hasLoc?`<td style="color:var(--muted)">${loc(b.start)}–${loc(b.end)}</td>`:''}</tr>`}).join('');
+  /* Which periods belong to the same pilot (or pair), and how much that adds to. */
+  const slots={};r.breaks.forEach((b,i)=>{(slots[b.g]=slots[b.g]||[]).push(i+1)});
+  const totals=r.totals.map((t,i)=>`<div><span class="dot" style="background:${GCOL[i]}"></span>${(slots[i]||[]).map(ord).join(' &amp; ')}<b>${fmtDur(t)}</b></div>`).join('');
+  out.innerHTML=`${status}
+    <div style="margin-top:12px"><div class="tl">${tl}</div><div class="tl-lbls"><span>T/O ${fmtClock(r.off)}Z</span><span>LDG ${fmtClock(r.on)}Z</span></div></div>
+    <div class="scrollx" style="margin-top:10px"><table class="sched"><thead><tr><th>Break</th><th>Start</th><th>End</th><th>Length</th>${hasLoc?'<th>Local</th>':''}</tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="totals" style="margin-top:12px">${totals}</div>`;
+}
+function rInit(){
+  setSeg('#rCrew',R.crew);setSeg('#rMode',R.mode);$('#rRound5').checked=R.round5;
+  $('#rExample').hidden=!rExample;
+  rBuildRounds();rSplitVisible();rRender();
+}
+
+/* =========================================================
+   CREW: people + notes, on this device. Import/export the same
+   markdown Obsidian uses, so nothing is ever locked in here.
+   ========================================================= */
+const SECORDER=['Role','Background','Home','Family','Interests & conversation',
+  'Side projects & business','Shared moments','Impressions','Sensitive · keep to yourself',
+  'Flights together','Notes log'];
+const PRIVSEC='Sensitive · keep to yourself';
+
+/* ---------- storage (IndexedDB: notes outgrow localStorage) ---------- */
+let _db=null;
+function db(){
+  return _db||(_db=new Promise((res,rej)=>{
+    const r=indexedDB.open('blocktime',2);
+    r.onupgradeneeded=()=>{const d=r.result;
+      if(!d.objectStoreNames.contains('people'))d.createObjectStore('people',{keyPath:'id'});
+      if(!d.objectStoreNames.contains('assignments'))d.createObjectStore('assignments',{keyPath:'id'});
+      /* flights.json arrives whole and is read-only here, so it is kept as one
+         record rather than a row per flight — no key collisions on a day with
+         two legs over the same route. */
+      if(!d.objectStoreNames.contains('flights'))d.createObjectStore('flights',{keyPath:'id'});
+    };
+    r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);
+  }));
+}
+function dbAll(st){return db().then(d=>new Promise((res,rej)=>{
+  const q=d.transaction(st,'readonly').objectStore(st).getAll();
+  q.onsuccess=()=>res(q.result||[]);q.onerror=()=>rej(q.error)}))}
+function dbDel(st,key){return db().then(d=>new Promise((res,rej)=>{
+  const t=d.transaction(st,'readwrite');t.objectStore(st).delete(key);
+  t.oncomplete=()=>res();t.onerror=()=>rej(t.error)}))}
+function dbPut(st,arr){return db().then(d=>new Promise((res,rej)=>{
+  const t=d.transaction(st,'readwrite'),o=t.objectStore(st);
+  (Array.isArray(arr)?arr:[arr]).forEach(v=>o.put(v));
+  t.oncomplete=()=>res();t.onerror=()=>rej(t.error)}))}
+
+/* ---------- markdown <-> person ---------- */
+const slug=n=>String(n).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'')||'person';
+/* Names are typed the natural way — First Last — while company exports use
+   "Surname, First". Derive it rather than asking anyone to type a name twice.
+   A multi-part surname is guessed wrong, so the field stays editable. */
+/* Every captain string the company has ever written, from the imported logbook.
+   Matching on SURNAME is what makes this work: first names are where the
+   mismatches live — Joe against Joseph, a nickname, or a truncation like
+   "Someone Long, Vict". Offer the real strings instead of guessing at one. */
+function capNames(){
+  const out={};
+  (HIST&&HIST.flights||[]).forEach(f=>{if(f.cap)out[f.cap]=1});
+  return Object.keys(out).sort();
+}
+function capMatches(name){
+  const words=String(name||'').trim().split(/\s+/).filter(w=>w.length>2);
+  if(!words.length)return [];
+  const last=words[words.length-1].toLowerCase();
+  return capNames().filter(c=>{
+    /* Compare whole surname words, not substrings: "Ely" must not match
+       "Entirelynew". A prefix still counts, because the export truncates. */
+    return (c.split(',')[0]||'').toLowerCase().split(/\s+/).some(w=>
+      w===last||(last.length>=4&&w.indexOf(last)===0)||(w.length>=4&&last.indexOf(w)===0));
+  }).slice(0,6);
+}
+function logName(n){
+  const p=String(n||'').trim().split(/\s+/).filter(Boolean);
+  return p.length<2?p.join(' '):p[p.length-1]+', '+p.slice(0,-1).join(' ');
+}
+function fmList(v){
+  if(!v)return[];
+  const q=String(v).match(/"([^"]*)"/g);
+  if(q)return q.map(x=>x.slice(1,-1)).filter(Boolean);
+  return String(v).replace(/^\[|\]$/g,'').split(',').map(x=>x.trim()).filter(Boolean);
+}
+function mdParse(txt,fname){
+  const lines=String(txt).replace(/\r\n?/g,'\n').split('\n');
+  let i=0;const fm={};
+  if((lines[0]||'').trim()==='---'){
+    for(i=1;i<lines.length&&lines[i].trim()!=='---';i++){
+      const m=/^([A-Za-z_][\w-]*)\s*:\s*(.*)$/.exec(lines[i]);
+      if(m)fm[m[1]]=m[2].trim();
+    }
+    i++;
+  }
+  let name=fm.name||'';const secs=[];let cur=null;
+  for(;i<lines.length;i++){
+    const L=lines[i];let m;
+    if(m=/^#\s+(.+)$/.exec(L)){if(!name)name=m[1].trim();continue}
+    if(m=/^##\s+(.+)$/.exec(L)){cur={title:m[1].trim(),items:[]};secs.push(cur);continue}
+    if(m=/^[-*]\s*(.*)$/.exec(L)){const t=m[1].trim();if(cur&&t)cur.items.push(t);continue}
+    if(L.trim()&&cur)cur.items.push(L.trim());
+  }
+  if(!name)name=String(fname||'').replace(/\.md$/i,'')||'Unnamed';
+  return {id:slug(name),name:name,aliases:fmList(fm.aliases),role:fm.role||'Crew',
+    flights_together:+(fm.flights_together||0)||0,last_flown:fm.last_flown||'',
+    tags:fmList(fm.tags).length?fmList(fm.tags):['crew'],sections:secs};
+}
+/* A crew note has frontmatter carrying a name and the crew tag. Anything else
+   in the folder belongs to someone else's note-taking: never parse it as a
+   person, and above all never write it back in this app's format. This is what
+   stops a mistyped sync folder from rewriting an Obsidian vault. */
+function looksLikeCrew(txt){
+  const head=String(txt).replace(/\r\n?/g,'\n');
+  if(!/^---\n/.test(head))return false;
+  const end=head.indexOf('\n---',3);
+  if(end<0)return false;
+  const fm=head.slice(4,end);
+  return /(^|\n)name\s*:\s*\S/.test(fm)&&/(^|\n)tags\s*:[^\n]*\bcrew\b/.test(fm);
+}
+function mdWrite(p){
+  const L=['---','name: '+p.name,
+    'aliases: ['+(p.aliases||[]).map(a=>'"'+a+'"').join(', ')+']',
+    'role: '+(p.role||'Crew'),
+    'flights_together: '+(p.flights_together||0),
+    'last_flown: '+(p.last_flown||''),
+    'tags: ['+((p.tags&&p.tags.length?p.tags:['crew']).join(', '))+']',
+    '---','','# '+p.name,''];
+  (p.sections||[]).forEach(s=>{
+    L.push('## '+s.title);
+    (s.items&&s.items.length?s.items:['']).forEach(it=>L.push('- '+it));
+    L.push('');
+  });
+  return L.join('\n');
+}
+function sec(p,title,make){
+  let s=(p.sections||[]).find(x=>x.title===title);
+  if(!s&&make){s={title:title,items:[]};p.sections=p.sections||[];p.sections.push(s);
+    p.sections.sort((a,b)=>{const i=SECORDER.indexOf(a.title),j=SECORDER.indexOf(b.title);
+      return (i<0?99:i)-(j<0?99:j)})}
+  return s;
+}
+
+/* ---------- zip (store-only write, read handles deflate too) ---------- */
+const CRCT=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;
+  for(let k=0;k<8;k++)c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1);t[n]=c>>>0}return t})();
+function crc32(u){let c=0xFFFFFFFF;for(let i=0;i<u.length;i++)c=CRCT[(c^u[i])&0xFF]^(c>>>8);return (c^0xFFFFFFFF)>>>0}
+function zipWrite(files){
+  const enc=new TextEncoder(),body=[],cdir=[];let off=0;
+  const d=new Date(),dt=((d.getFullYear()-1980)<<9)|((d.getMonth()+1)<<5)|d.getDate(),
+        tm=(d.getHours()<<11)|(d.getMinutes()<<5)|(d.getSeconds()>>1);
+  files.forEach(f=>{
+    const nb=enc.encode(f.name),n=f.data.length,c=crc32(f.data);
+    const lh=new DataView(new ArrayBuffer(30));
+    lh.setUint32(0,0x04034b50,true);lh.setUint16(4,20,true);lh.setUint16(6,0x0800,true);
+    lh.setUint16(8,0,true);lh.setUint16(10,tm,true);lh.setUint16(12,dt,true);
+    lh.setUint32(14,c,true);lh.setUint32(18,n,true);lh.setUint32(22,n,true);
+    lh.setUint16(26,nb.length,true);lh.setUint16(28,0,true);
+    body.push(new Uint8Array(lh.buffer),nb,f.data);
+    const ch=new DataView(new ArrayBuffer(46));
+    ch.setUint32(0,0x02014b50,true);ch.setUint16(4,20,true);ch.setUint16(6,20,true);
+    ch.setUint16(8,0x0800,true);ch.setUint16(10,0,true);ch.setUint16(12,tm,true);ch.setUint16(14,dt,true);
+    ch.setUint32(16,c,true);ch.setUint32(20,n,true);ch.setUint32(24,n,true);
+    ch.setUint16(28,nb.length,true);ch.setUint16(30,0,true);ch.setUint16(32,0,true);
+    ch.setUint16(34,0,true);ch.setUint16(36,0,true);ch.setUint32(38,0,true);ch.setUint32(42,off,true);
+    cdir.push(new Uint8Array(ch.buffer),nb);
+    off+=30+nb.length+n;
+  });
+  const cdsz=cdir.reduce((a,x)=>a+x.length,0);
+  const eo=new DataView(new ArrayBuffer(22));
+  eo.setUint32(0,0x06054b50,true);eo.setUint16(4,0,true);eo.setUint16(6,0,true);
+  eo.setUint16(8,files.length,true);eo.setUint16(10,files.length,true);
+  eo.setUint32(12,cdsz,true);eo.setUint32(16,off,true);eo.setUint16(20,0,true);
+  return new Blob(body.concat(cdir,[new Uint8Array(eo.buffer)]),{type:'application/zip'});
+}
+async function zipRead(buf){
+  const u8=new Uint8Array(buf),dv=new DataView(buf),dec=new TextDecoder();
+  let e=-1;
+  for(let i=u8.length-22;i>=0&&i>u8.length-66000;i--){if(dv.getUint32(i,true)===0x06054b50){e=i;break}}
+  if(e<0)throw new Error('Not a zip file');
+  const n=dv.getUint16(e+10,true);let p=dv.getUint32(e+16,true),out=[];
+  for(let k=0;k<n&&p+46<=u8.length;k++){
+    const meth=dv.getUint16(p+10,true),csz=dv.getUint32(p+20,true),
+          nl=dv.getUint16(p+28,true),el=dv.getUint16(p+30,true),cl=dv.getUint16(p+32,true),
+          lo=dv.getUint32(p+42,true);
+    const name=dec.decode(u8.subarray(p+46,p+46+nl));
+    p+=46+nl+el+cl;
+    if(/\/$/.test(name)||/(^|\/)\._|(^|\/)__MACOSX\//.test(name))continue;
+    if(!/\.(md|json)$/i.test(name))continue;
+    const lnl=dv.getUint16(lo+26,true),lel=dv.getUint16(lo+28,true),st=lo+30+lnl+lel;
+    const comp=u8.subarray(st,st+csz);
+    let data;
+    if(meth===0)data=comp;
+    else if(meth===8&&typeof DecompressionStream!=='undefined')
+      data=new Uint8Array(await new Response(new Blob([comp]).stream()
+        .pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer());
+    else continue;
+    out.push({name:name.split('/').pop(),text:dec.decode(data)});
+  }
+  return out;
+}
+function save(blob,name){
+  const u=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=u;a.download=name;document.body.appendChild(a);a.click();
+  a.remove();setTimeout(()=>URL.revokeObjectURL(u),4000);
+}
+
+/* ---------- state ---------- */
+let PEOPLE=[],cwQ='',cwOpen=null;
+const zdate=()=>new Date().toISOString().slice(0,10);
+
+function cwSort(a,b){
+  const la=a.last_flown||'',lb=b.last_flown||'';
+  if(la!==lb)return la<lb?1:-1;
+  return a.name.localeCompare(b.name);
+}
+function cwRender(){
+  const q=cwQ.trim().toLowerCase();
+  const list=PEOPLE.filter(p=>!q||p.name.toLowerCase().includes(q)
+    ||(p.aliases||[]).some(a=>a.toLowerCase().includes(q))
+    ||(p.sections||[]).some(s=>s.items.some(i=>i.toLowerCase().includes(q))));
+  list.sort(cwSort);
+  const box=$('#cwRows');
+  if(!PEOPLE.length){
+    box.innerHTML='<div class="empty">No crew yet.<br><br>'
+      +'Tap <b>+</b> to add someone, or <b>Import</b> to load Obsidian <b>.md</b> notes '
+      +'(pick several at once, or a <b>.zip</b> of the folder).<br><br>'
+      +'Everything stays on this device.</div>';
+  }else if(!list.length){
+    box.innerHTML='<div class="empty">Nobody matches &ldquo;'+esc(cwQ)+'&rdquo;.</div>';
+  }else{
+    box.innerHTML=list.map(p=>{
+      const n=p.flights_together||0;
+      const meta=[p.role||'Crew',p.last_flown?'last '+p.last_flown:''].filter(Boolean).join(' · ');
+      return '<button type="button" class="cwrow" data-id="'+esc(p.id)+'">'
+        +'<span class="n">'+esc(p.name)+'</span>'
+        +'<span class="r">'+(n?'<b>'+n+'</b> flt':'')+'</span>'
+        +'<span class="m">'+esc(meta)+'</span></button>';
+    }).join('');
+  }
+  $('#cwCount').textContent=PEOPLE.length
+    ?(list.length===PEOPLE.length?PEOPLE.length+' people':list.length+' of '+PEOPLE.length)
+    :'';
+}
+/* Sections the app offers to add. 'Flights together' is left out: it comes
+   from the logbook, not from typing. */
+const ADDABLE=SECORDER.filter(t=>t!=='Flights together');
+
+let cwEd=null;   // {si, ii} — ii null means "new item in section si"
+let cwHdr=false; // editing name / role / logbook name
+
+const person=()=>PEOPLE.find(x=>x.id===cwOpen);
+function cwSave(p){p.updated=new Date().toISOString();return dbPut('people',p).catch(()=>{})}
+
+function cwShow(id){
+  if(id&&id!==cwOpen){cwEd=null;cwHdr=false;cwOpen=id}
+  const p=person();if(!p)return;
+  $('#cwListView').hidden=true;$('#cwTripsView').hidden=true;$('#cwTripView').hidden=true;
+  $('#cwDetView').hidden=false;$('#cwSeg').hidden=true;
+  $('#cwdName').textContent=p.name;
+  $('#cwdSub').textContent=[p.role||'Crew',
+    (p.flights_together?p.flights_together+' flight'+(p.flights_together===1?'':'s')+' together':''),
+    (p.last_flown?'last '+p.last_flown:'')].filter(Boolean).join(' · ');
+  $('#cwEditHdr').textContent=cwHdr?'Done':'Edit';
+
+  const out=[];
+  if(cwHdr){
+    out.push('<div class="cw-sec"><h3>Details</h3><div class="cw-f">'
+      +'<label><span class="lbl">Name</span><input id="cwfName" value="'+esc(p.name)+'" autocomplete="off"></label>'
+      +'<label><span class="lbl">Role</span><input id="cwfRole" value="'+esc(p.role||'')+'" placeholder="Captain / FO" autocomplete="off"></label>'
+      +'<label><span class="lbl">Name in company logbook</span><input id="cwfAlias" value="'
+        +esc((p.aliases||[]).join('; '))+'" placeholder="'+esc(logName(p.name))+'" autocomplete="off"></label>'
+      +(function(){
+        const m=capMatches(p.name);
+        if(m.length)return '<div class="cw-chips" style="margin-top:2px">'
+          +m.map(c=>'<button type="button" class="capPick" data-c="'+esc(c)+'">'+esc(c)+'</button>').join('')
+          +'</div><p class="cw-none">Captains in your logbook with that surname &mdash; tap to use the '
+          +'company&rsquo;s own spelling.</p>';
+        return '<p class="cw-none">How the company export spells them &mdash; this is what links them '
+          +'to your flights. Left blank, it is taken as <b>'+esc(logName(p.name))+'</b>.'
+          +(HIST?'':' Import <b>flights.json</b> and the real spellings appear here to pick from.')
+          +'</p>';
+      })()
+      +'<div class="cw-edb"><button type="button" class="ok" id="cwfSave">Save</button>'
+      +'<button type="button" class="del" id="cwfDel">Delete person</button></div>'
+      +'</div></div>');
+  }else{
+    out.push('<div class="cw-sec"><h3>Add a note</h3><div class="cw-add">'
+      +'<input id="cwNote" placeholder="What happened / what they said" autocomplete="off" enterkeyhint="done">'
+      +'<button type="button" class="cw-ib" id="cwNoteSave" aria-label="Save note">&#10003;</button></div></div>');
+  }
+
+  (p.sections||[]).forEach((sc,si)=>{
+    const priv=sc.title===PRIVSEC;
+    const rows=sc.items.map((it,ii)=>{
+      if(cwEd&&cwEd.si===si&&cwEd.ii===ii)return editor(it,si,ii);
+      return '<button type="button" class="cw-it" data-si="'+si+'" data-ii="'+ii+'">'+esc(it)+'</button>';
+    });
+    if(cwEd&&cwEd.si===si&&cwEd.ii===null)rows.push(editor('',si,null));
+    if(!rows.length)rows.push('<div class="cw-none">Nothing here yet.</div>');
+    const head='<h3><span>'+esc(sc.title)+'</span>'
+      +'<button type="button" class="cwPlus" data-si="'+si+'" aria-label="Add to '+esc(sc.title)+'">+</button></h3>';
+    const cls='cw-sec'+(priv?' priv':'')+(sc.title==='Flights together'?' flights':'');
+    out.push('<div class="'+cls+'">'+head+'<div>'+rows.join('')+'</div></div>');
+  });
+
+  const mine=tripsFor(p.id);
+  if(mine.length)out.push('<div class="cw-sec flights"><h3><span>Flights recorded here</span></h3><ul>'
+    +mine.map(t=>{
+      const c=(t.crew||[]).find(x=>x.pid===p.id);
+      return '<li>'+esc(t.date)+' \u00b7 '+esc(t.frm)+'\u2013'+esc(t.to)
+        +(c?' \u00b7 '+esc(c.role):'')+(t.note?' \u00b7 '+esc(t.note):'')+'</li>';
+    }).join('')
+    +'</ul><p class="cw-none">Yours, not the company\u2019s. These merge into the logbook when the next export lands.</p></div>');
+
+  const missing=ADDABLE.filter(t=>!(p.sections||[]).some(s=>s.title===t));
+  if(missing.length)out.push('<div class="cw-sec"><h3>Add a section</h3><div class="cw-chips">'
+    +missing.map(t=>'<button type="button" class="cwAddSec" data-t="'+esc(t)+'">'+esc(t)+'</button>').join('')
+    +'</div></div>');
+
+  $('#cwdBody').innerHTML=out.join('');
+  wire();
+}
+function editor(val,si,ii){
+  return '<div class="cw-ed"><textarea id="cwEdT" autofocus enterkeyhint="done">'+esc(val)+'</textarea>'
+    +'<div class="cw-edb"><button type="button" class="ok" id="cwEdOk">Save</button>'
+    +'<button type="button" id="cwEdNo">Cancel</button>'
+    +(ii===null?'':'<button type="button" class="del" id="cwEdDel">Delete</button>')
+    +'</div></div>';
+}
+function wire(){
+  const b=$('#cwdBody');
+  b.querySelectorAll('.cw-it').forEach(el=>el.onclick=()=>{
+    cwEd={si:+el.dataset.si,ii:+el.dataset.ii};cwShow();focusEd()});
+  b.querySelectorAll('.cwPlus').forEach(el=>el.onclick=()=>{
+    cwEd={si:+el.dataset.si,ii:null};cwShow();focusEd()});
+  b.querySelectorAll('.cwAddSec').forEach(el=>el.onclick=()=>{
+    const p=person();sec(p,el.dataset.t,true);
+    cwEd={si:p.sections.findIndex(s=>s.title===el.dataset.t),ii:null};
+    cwShow();focusEd();cwSave(p)});
+  if($('#cwEdOk')){
+    $('#cwEdOk').onclick=edSave;
+    $('#cwEdNo').onclick=()=>{cwEd=null;cwShow()};
+    if($('#cwEdDel'))$('#cwEdDel').onclick=edDel;
+    $('#cwEdT').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();edSave()}};
+  }
+  if($('#cwNoteSave')){
+    $('#cwNoteSave').onclick=cwAddNote;
+    $('#cwNote').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();cwAddNote()}};
+  }
+  if($('#cwfSave')){
+    $('#cwfSave').onclick=hdrSave;
+    $('#cwfDel').onclick=delPerson;
+  }
+  b.querySelectorAll('.capPick').forEach(el=>el.onclick=()=>{
+    const f=$('#cwfAlias');if(!f)return;
+    f.value=el.dataset.c;
+    el.parentNode.querySelectorAll('.capPick').forEach(x=>x.style.borderColor='');
+    el.style.borderColor='var(--cyan)';
+  });
+}
+/* Must run inside the tap that opened the box: iOS only raises the keyboard
+   for a focus() call still inside the user gesture, so nothing may await first. */
+function focusEd(){
+  const t=$('#cwEdT');if(!t)return;
+  try{t.focus({preventScroll:true})}catch(e){t.focus()}
+  const n=t.value.length;try{t.setSelectionRange(n,n)}catch(e){}
+  try{t.scrollIntoView({block:'center'})}catch(e){}
+}
+function edSave(){
+  const p=person(),t=$('#cwEdT');if(!p||!t||!cwEd)return;
+  const v=t.value.trim(),si=cwEd.si,sc=p.sections[si];if(!sc)return;
+  const wasNew=cwEd.ii===null;
+  if(!v){if(!wasNew)sc.items.splice(cwEd.ii,1);cwEd=null}
+  else if(wasNew){sc.items.push(v);cwEd={si:si,ii:null}}  // straight into the next one
+  else{sc.items[cwEd.ii]=v;cwEd=null}
+  cwShow();
+  if(cwEd)focusEd();
+  cwSave(p);
+}
+function edDel(){
+  const p=person();if(!p||!cwEd||cwEd.ii===null)return;
+  p.sections[cwEd.si].items.splice(cwEd.ii,1);
+  cwEd=null;cwShow();cwSave(p);
+}
+function hdrSave(){
+  const p=person();if(!p)return;
+  const nm=$('#cwfName').value.trim();
+  if(nm)p.name=nm;
+  p.role=$('#cwfRole').value.trim()||'Crew';
+  p.aliases=$('#cwfAlias').value.split(';').map(x=>x.trim()).filter(Boolean);
+  if(!p.aliases.length&&logName(p.name))p.aliases=[logName(p.name)];
+  cwHdr=false;cwShow();cwRender();cwSave(p);
+}
+async function delPerson(){
+  const p=person();if(!p)return;
+  if(!confirm('Delete '+p.name+' and every note about them? This cannot be undone.'))return;
+  await db().then(d=>new Promise((res,rej)=>{
+    const t=d.transaction('people','readwrite');t.objectStore('people').delete(p.id);
+    t.oncomplete=()=>res();t.onerror=()=>rej(t.error)}));
+  PEOPLE=PEOPLE.filter(x=>x.id!==p.id);
+  cwHdr=false;cwEd=null;cwHide();
+}
+function cwHide(){cwOpen=null;cwEd=null;cwHdr=false;setMode(cwMode)}
+function cwAddNote(){
+  const inp=$('#cwNote'),txt=inp.value.trim();if(!txt)return;
+  const p=person();if(!p)return;
+  sec(p,'Notes log',true).items.unshift(zdate()+' · '+txt);
+  cwShow();
+  const n=$('#cwNote');if(n){n.value='';try{n.focus({preventScroll:true})}catch(e){n.focus()}}
+  cwSave(p);
+}
+
+/* ---------- trips: who was actually in the seats ----------
+   The company export names the captain and no one else, so on an augmented
+   crew this is the only record of the relief pilots. Keyed (date, from, to)
+   to match how the logbook merge finds a flight. */
+/* Seats, not ranks. With RP1/RP2 recorded explicitly the rest teams follow from
+   the data — the starting pairs are CA+FO and RP1+RP2 — instead of being guessed
+   from the order people were typed in, and it gives the logbook a better
+   Other-crew record. Rest periods are simply numbered; they carry no names. */
+const ROLES=['CA','FO','RP1','RP2','DH'];
+const SEATS=['CA','FO','RP1','RP2'];
+const mySeat=()=>store.get('seat','FO');
+/* Next free seat, skipping the user's own: adding crew needs no extra taps. */
+function nextSeat(t){
+  const used=(t.crew||[]).map(c=>c.role);
+  return SEATS.find(x=>x!==mySeat()&&used.indexOf(x)<0)||'DH';
+}
+let TRIPS=[],tOpen=null,tPick=false,cwMode='people';
+
+const ap=v=>String(v||'').toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,4);
+/* type 20261003 and it becomes 2026-10-03 as you go */
+function dfmt(v){
+  const d=String(v||'').replace(/\D/g,'').slice(0,8);
+  if(d.length<=4)return d;
+  if(d.length<=6)return d.slice(0,4)+'-'+d.slice(4);
+  return d.slice(0,4)+'-'+d.slice(4,6)+'-'+d.slice(6);
+}
+const dok=v=>/^\d{4}-\d{2}-\d{2}$/.test(v||'');
+function dshift(iso,n){
+  const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(iso||'');
+  const base=m?Date.UTC(+m[1],+m[2]-1,+m[3]):Date.parse(zdate()+'T00:00:00Z');
+  return new Date(base+n*86400000).toISOString().slice(0,10);
+}
+const tripId=t=>t.date+'|'+t.frm+'|'+t.to;
+const nameOf=id=>{const p=PEOPLE.find(x=>x.id===id);return p?p.name:'(removed)'};
+function tripsFor(pid){
+  return TRIPS.filter(t=>(t.crew||[]).some(c=>c.pid===pid))
+    .sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:0);
+}
+function tSave(t){t.updated=new Date().toISOString();return dbPut('assignments',t).catch(()=>{})}
+
+function setMode(m){
+  cwMode=m;store.set('cwMode',m);
+  $('#cwListView').hidden=m!=='people';
+  $('#cwTripsView').hidden=m!=='trips';
+  $('#cwDetView').hidden=true;$('#cwTripView').hidden=true;
+  $('#cwSeg').hidden=false;
+  document.querySelectorAll('#cwSeg button').forEach(b=>
+    b.setAttribute('aria-pressed',String(b.dataset.v===m)));
+  if(m==='people')cwRender();else tRender();
+}
+let HIST=null;   // the imported logbook: {through, totals, flights:[...]}
+
+/* Landing recency. Simulator landings count toward currency, so they are part of
+   the headline number; the breakdown is shown because on an augmented long-haul
+   roster the recent ones may all be from the box, which is worth knowing.
+   Stated as dates and counts — never as a verdict on whether anyone is legal,
+   which depends on type, seat and programmes this app knows nothing about. */
+const dayAdd=(iso,n)=>new Date(Date.parse(iso+'T00:00:00Z')+n*86400000).toISOString().slice(0,10);
+const pretty=iso=>{const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(iso||'');
+  return m?(+m[3])+' '+['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+m[2]-1]:iso};
+function landingRecency(){
+  const all=[],seen={};
+  /* The logbook is authoritative for landings once a flight reaches it, so a leg
+     present in history ignores any tap for the same leg — the tap only covers the
+     gap since the last import. */
+  (HIST&&HIST.flights||[]).forEach(f=>{
+    const key=f.d+'|'+f.f+'|'+f.t;seen[key]=1;
+    const n=Math.round((+f.ld||0)+(+f.ln||0));
+    for(let i=0;i<n;i++)all.push({d:f.d,rt:(f.f||'')+'\u2013'+(f.t||''),sim:!!f.sim});
+  });
+  TRIPS.forEach(t=>{
+    if(seen[t.date+'|'+t.frm+'|'+t.to])return;
+    const n=+t.ldg||0;
+    for(let i=0;i<n;i++)all.push({d:t.date,rt:(t.frm||'')+'\u2013'+(t.to||''),sim:false,mine:true});
+  });
+  all.sort((a,b)=>a.d<b.d?1:a.d>b.d?-1:0);
+  const today=zdate(),from=dayAdd(today,-89);
+  const in90=all.filter(e=>e.d>=from&&e.d<=today);
+  return {all:all,in90:in90.length,simIn90:in90.filter(e=>e.sim).length,
+          last3:all.slice(0,3),lastAc:all.find(e=>!e.sim)||null,
+          lastSim:all.find(e=>e.sim)||null,through:HIST&&HIST.through||null,
+          mine:TRIPS.reduce((n,t)=>n+(seen[t.date+'|'+t.frm+'|'+t.to]?0:(+t.ldg||0)),0)};
+}
+function tCurrency(){
+  const el=$('#tCurrency'),r=landingRecency();
+  if(!TRIPS.length&&!HIST){el.hidden=true;return}
+  el.hidden=false;
+  if(!r.all.length){
+    el.className='status';
+    el.innerHTML='No landings yet. Set <b>My landings</b> on a flight, or import '
+      +'<b>flights.json</b> to bring your logbook history in.';
+    return;
+  }
+  let head='<b>'+r.in90+'</b> landing'+(r.in90===1?'':'s')+' in the last 90 days';
+  if(r.simIn90===r.in90&&r.in90)head+=' — all in the sim'
+    +(r.lastSim?' ('+pretty(r.lastSim.d)+')':'');
+  else if(r.simIn90)head+=' — '+r.simIn90+' of them in the sim';
+  const parts=[head];
+  if(r.lastAc)parts.push('Last aircraft landing '+pretty(r.lastAc.d)
+    +(r.lastAc.rt?' · '+esc(r.lastAc.rt):''));
+  if(r.last3.length===3)parts.push('Third most recent ages out '+pretty(dayAdd(r.last3[2].d,90)));
+  el.className=r.in90>=3?'status':'status warn';
+  const src=r.through
+    ? 'Logbook history to '+pretty(r.through)+(r.mine?' plus '+r.mine+' logged here':'')
+    : 'From flights entered here only — import flights.json for your history';
+  el.innerHTML=parts.join('<br>')
+    +'<br><span style="color:var(--muted);font-size:12px">'+src+'</span>';
+}
+function tRender(){
+  tCurrency();
+  const box=$('#tRows');
+  const list=TRIPS.slice().sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:0);
+  if(!list.length){
+    box.innerHTML='<div class="empty">No flights recorded.<br><br>Tap <b>New flight</b> after a leg: '
+      +'the date, the route, who was in the seats, and whether you landed. The company record only ever names the '
+      +'captain, so this is the only place the rest of the crew exists.</div>';
+  }else{
+    box.innerHTML=list.map(t=>{
+      const who=(t.crew||[]).map(c=>nameOf(c.pid)+' ('+c.role+')').join(', ')||'nobody yet';
+      return '<button type="button" class="trow" data-id="'+esc(t.id)+'">'
+        +'<span class="d">'+esc(t.date)+'</span>'
+        +'<span class="rt">'+esc(t.frm||'???')+'&ndash;'+esc(t.to||'???')+'</span>'
+        +'<span class="who">'+esc(who)+'</span></button>';
+    }).join('');
+  }
+  $('#tCount').textContent=TRIPS.length?TRIPS.length+' flight'+(TRIPS.length===1?'':'s'):'';
+}
+function tNewTrip(){
+  const t={id:'',date:zdate(),frm:'',to:'',crew:[],note:'',ldg:0,updated:''};
+  t.id='new';tOpen=t;tPick=false;tShow();
+}
+function tShow(id){
+  if(id){tOpen=TRIPS.find(t=>t.id===id)||tOpen;tPick=false}
+  const t=tOpen;if(!t)return;
+  $('#cwListView').hidden=true;$('#cwTripsView').hidden=true;$('#cwDetView').hidden=true;
+  $('#cwTripView').hidden=false;$('#cwSeg').hidden=true;
+  $('#tdTitle').textContent=(t.frm&&t.to)?t.frm+'–'+t.to:'New flight';
+  $('#tdSub').textContent=t.date||'';
+  const rows=(t.crew||[]).map((c,i)=>
+    '<div class="crewrow"><span class="nm2">'+esc(nameOf(c.pid))+'</span>'
+    +'<button type="button" class="rolechip" data-ri="'+i+'">'+esc(c.role)+'</button>'
+    +'<button type="button" class="rm" data-rm="'+i+'" aria-label="Remove">&times;</button></div>').join('');
+  const out=[];
+  out.push('<div class="cw-sec"><h3><span>Flight</span></h3><div class="cw-f">'
+    +'<label><span class="lbl">Date (Z)</span><div class="dater">'
+      +'<input id="tfDate" inputmode="numeric" maxlength="10" placeholder="YYYY-MM-DD" '
+        +'autocomplete="off" value="'+esc(t.date)+'">'
+      +'<button type="button" id="tfDm" aria-label="Day earlier">&minus;</button>'
+      +'<button type="button" id="tfDp" aria-label="Day later">+</button>'
+      /* The native picker is kept, but as a transparent layer over the calendar
+         button inside an overflow:hidden box, so its self-sizing shadow parts
+         can never push the row out of its column. */
+      +'<span class="calwrap"><button type="button" tabindex="-1" aria-hidden="true">'
+        +'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">'
+        +'<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 9.5h17"/>'
+        +'<path d="M8 3.5v3M16 3.5v3"/></svg></button>'
+        +'<input type="date" id="tfCal" aria-label="Pick a date from a calendar" value="'
+          +esc(dok(t.date)?t.date:'')+'"></span>'
+      +'</div></label>'
+    +'<div class="grid2">'
+    +'<label><span class="lbl">From</span><input id="tfFrm" value="'+esc(t.frm)+'" inputmode="text" '
+      +'autocapitalize="characters" autocomplete="off" maxlength="4" placeholder="IAH"></label>'
+    +'<label><span class="lbl">To</span><input id="tfTo" value="'+esc(t.to)+'" inputmode="text" '
+      +'autocapitalize="characters" autocomplete="off" maxlength="4" placeholder="RFD"></label>'
+    +'</div></div></div>');
+  out.push('<div class="cw-sec"><h3><span>Who was on it</span>'
+    +'<button type="button" id="tAdd" aria-label="Add crew">+</button></h3>'
+    +(rows||'<div class="cw-none">Nobody yet. You are assumed to be on it &mdash; add the others.</div>')
+    +'<p class="cw-none">Tap a role to change it: '+ROLES.join(' &middot; ')+'</p></div>');
+  if(tPick){
+    const q=($('#tPickQ')&&$('#tPickQ').value||'').trim().toLowerCase();
+    const taken=(t.crew||[]).map(c=>c.pid);
+    const hits=PEOPLE.filter(p=>!taken.includes(p.id)&&(!q||p.name.toLowerCase().includes(q)))
+      .sort((a,b)=>a.name.localeCompare(b.name)).slice(0,40);
+    out.push('<div class="cw-sec"><h3><span>Add crew</span>'
+      +'<button type="button" id="tPickX" aria-label="Close">&times;</button></h3>'
+      +'<div class="cw-add"><input id="tPickQ" placeholder="Type a name" autocomplete="off" '
+        +'value="'+esc($('#tPickQ')?$('#tPickQ').value:'')+'"></div>'
+      +'<div class="cw-chips" style="margin-top:8px">'
+      +hits.map(p=>'<button type="button" class="tPickOne" data-id="'+esc(p.id)+'">'+esc(p.name)+'</button>').join('')
+      +'</div>'
+      +(q&&!hits.some(p=>p.name.toLowerCase()===q)
+        ?'<div class="cw-edb" style="margin-top:8px"><button type="button" class="ok" id="tPickNew">'
+          +'Add &ldquo;'+esc($('#tPickQ')?$('#tPickQ').value.trim():'')+'&rdquo; as someone new</button></div>'
+        :'')
+      +'</div>');
+  }
+  out.push('<div class="cw-sec"><h3><span>My landings</span></h3>'
+    +'<div class="seg" id="tfLdg" style="max-width:14em">'
+    +[0,1,2,3].map(n=>'<button type="button" data-v="'+n+'">'+n+'</button>').join('')
+    +'</div></div>');
+  out.push('<div class="cw-sec"><h3><span>Note</span></h3><div class="cw-f">'
+    +'<label><input id="tfNote" value="'+esc(t.note||'')+'" placeholder="Anything about the leg" autocomplete="off"></label>'
+    +'</div></div>');
+  out.push('<div class="cw-edb"><button type="button" class="ok" id="tfSave">Save flight</button>'
+    +(TRIPS.some(x=>x.id===t.id)?'<button type="button" class="del" id="tfDel">Delete flight</button>':'')
+    +'</div>');
+  $('#tdBody').innerHTML=out.join('');
+  tWire();
+}
+function tWire(){
+  const b=$('#tdBody');
+  const t=tOpen;
+  const grab=()=>{
+    if($('#tfDate'))t.date=dfmt($('#tfDate').value)||t.date;
+    if($('#tfFrm'))t.frm=ap($('#tfFrm').value);
+    if($('#tfTo'))t.to=ap($('#tfTo').value);
+    if($('#tfNote'))t.note=$('#tfNote').value.trim();
+  };
+  ['tfFrm','tfTo'].forEach(id=>{const e=$('#'+id);if(e)e.oninput=()=>{e.value=ap(e.value)}});
+  const de=$('#tfDate');
+  if(de)de.oninput=()=>{const p=de.selectionStart===de.value.length;de.value=dfmt(de.value);
+    if(p){const n=de.value.length;try{de.setSelectionRange(n,n)}catch(e){}}};
+  const bump=n=>{grab();t.date=dshift(t.date,n);tShow()};
+  if($('#tfDm'))$('#tfDm').onclick=()=>bump(-1);
+  if($('#tfDp'))$('#tfDp').onclick=()=>bump(1);
+  setSeg('#tfLdg',+t.ldg||0);
+  $('#tfLdg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
+    grab();t.ldg=+b.dataset.v;setSeg('#tfLdg',t.ldg)});
+  const cal=$('#tfCal');
+  if(cal)cal.onchange=()=>{if(dok(cal.value)){grab();t.date=cal.value;tShow()}};
+  b.querySelectorAll('.rolechip').forEach(el=>el.onclick=()=>{
+    grab();const i=+el.dataset.ri,c=t.crew[i];
+    c.role=ROLES[(ROLES.indexOf(c.role)+1)%ROLES.length];tShow()});
+  b.querySelectorAll('[data-rm]').forEach(el=>el.onclick=()=>{
+    grab();t.crew.splice(+el.dataset.rm,1);tShow()});
+  if($('#tAdd'))$('#tAdd').onclick=()=>{grab();tPick=true;tShow();
+    const q=$('#tPickQ');if(q){try{q.focus({preventScroll:true})}catch(e){q.focus()}}};
+  if($('#tPickX'))$('#tPickX').onclick=()=>{grab();tPick=false;tShow()};
+  if($('#tPickQ')){
+    const q=$('#tPickQ');
+    q.oninput=()=>{const v=q.value,p=q.selectionStart;tShow();
+      const n=$('#tPickQ');if(n){n.value=v;try{n.focus({preventScroll:true})}catch(e){n.focus()}
+        try{n.setSelectionRange(p,p)}catch(e){}}};
+  }
+  b.querySelectorAll('.tPickOne').forEach(el=>el.onclick=()=>{
+    grab();t.crew.push({pid:el.dataset.id,role:nextSeat(t)});tPick=false;tShow()});
+  if($('#tPickNew'))$('#tPickNew').onclick=async()=>{
+    grab();const nm=$('#tPickQ').value.trim();if(!nm)return;
+    const id=slug(nm);
+    if(!PEOPLE.some(p=>p.id===id)){
+      const p={id:id,name:nm,aliases:[logName(nm)].filter(Boolean),role:'Crew',
+               flights_together:0,last_flown:'',tags:['crew'],sections:[],
+               updated:new Date().toISOString()};
+      PEOPLE.push(p);await dbPut('people',p);
+    }
+    t.crew.push({pid:id,role:nextSeat(t)});tPick=false;tShow();
+  };
+  if($('#tfSave'))$('#tfSave').onclick=async()=>{
+    grab();
+    if(!dok(t.date)){$('#tdSub').textContent='Date needs to be YYYY-MM-DD';return}
+    if(!t.frm||!t.to){$('#tdSub').textContent='Needs a From and a To';return}
+    const wasNew=!TRIPS.some(x=>x.id===t.id);
+    const nid=tripId(t);
+    if(wasNew||nid!==t.id){
+      const clash=TRIPS.find(x=>x.id===nid&&x!==t);
+      if(clash){$('#tdSub').textContent=t.date+' '+t.frm+'–'+t.to+' is already recorded';return}
+      if(!wasNew)await dbDel('assignments',t.id);
+      t.id=nid;
+    }
+    await tSave(t);
+    TRIPS=await dbAll('assignments');
+    tOpen=null;setMode('trips');
+  };
+  if($('#tfDel'))$('#tfDel').onclick=async()=>{
+    if(!confirm('Delete this flight? The crew notes themselves are not touched.'))return;
+    await dbDel('assignments',t.id);
+    TRIPS=await dbAll('assignments');tOpen=null;setMode('trips');
+  };
+}
+
+/* ---------- import / export ---------- */
+function notesUnion(a,b){
+  const out=b.slice();
+  a.forEach(i=>{if(!out.includes(i))out.push(i)});
+  out.sort((x,y)=>{const dx=/^\d{4}-\d{2}-\d{2}/.exec(x),dy=/^\d{4}-\d{2}-\d{2}/.exec(y);
+    if(dx&&dy)return dx[0]<dy[0]?1:dx[0]>dy[0]?-1:0;return dx?-1:dy?1:0});
+  return out;
+}
+/* Whoever edited last wins, per person — the file's modified time against this
+   device's last save. Notes are never dropped either way, and 'Flights
+   together' always comes from the file because only the logbook can work it out. */
+function mergePerson(incoming,mtime){
+  const cur=PEOPLE.find(x=>x.id===incoming.id);
+  if(!cur){incoming.updated=new Date(mtime||Date.now()).toISOString();return {p:incoming,kept:false}}
+  const notes=notesUnion((sec(cur,'Notes log')||{items:[]}).items,
+                         (sec(incoming,'Notes log')||{items:[]}).items);
+  const deviceNewer=cur.updated&&mtime&&new Date(cur.updated).getTime()>mtime;
+  const win=deviceNewer?cur:incoming;
+  if(deviceNewer){
+    const fl=sec(incoming,'Flights together');
+    if(fl&&fl.items.length){const t=sec(win,'Flights together',true);t.items=fl.items}
+    if(incoming.flights_together)win.flights_together=incoming.flights_together;
+    if(incoming.last_flown)win.last_flown=incoming.last_flown;
+  }else{
+    win.updated=new Date(mtime||Date.now()).toISOString();
+  }
+  if(notes.length)sec(win,'Notes log',true).items=notes;
+  return {p:win,kept:!!deviceNewer};
+}
+async function cwFiles(files){
+  const docs=[],jsons=[];
+  for(const f of files){
+    const mt=f.lastModified||Date.now();
+    try{
+      if(/\.zip$/i.test(f.name))
+        (await zipRead(await f.arrayBuffer())).forEach(d=>{
+          if(/\.json$/i.test(d.name))jsons.push({text:d.text,mtime:mt});
+          else docs.push({name:d.name,text:d.text,mtime:mt})});
+      else if(/\.json$/i.test(f.name))jsons.push({text:await f.text(),mtime:mt});
+      else docs.push({name:f.name,text:await f.text(),mtime:mt});
+    }catch(err){
+      $('#cwCount').textContent='Could not read '+f.name;return;
+    }
+  }
+  const skipped=docs.filter(d=>!looksLikeCrew(d.text)).length;
+  const rows=docs.filter(d=>looksLikeCrew(d.text))
+    .map(d=>({p:mdParse(d.text,d.name),mtime:d.mtime})).filter(r=>r.p.name);
+  let res=[];
+  if(rows.length){
+    res=rows.map(r=>mergePerson(r.p,r.mtime));
+    await dbPut('people',res.map(r=>r.p));
+    PEOPLE=await dbAll('people');
+  }
+  const nt=await importTrips(jsons);
+  if(!rows.length&&!nt){
+    $('#cwCount').textContent=skipped
+      ? skipped+' file(s) are not crew notes (need frontmatter with a name and tags: [crew])'
+      : 'No notes found in that';
+    return;
+  }
+  if(cwMode==='people')cwRender();else tRender();
+  const kept=res.filter(r=>r.kept).length;
+  $('#cwCount').textContent=[
+    rows.length?'Imported '+res.length:'',
+    kept?'kept '+kept+' newer here':'',
+    nt?nt+' trip'+(nt===1?'':'s'):'',
+    skipped?'skipped '+skipped+' non-crew':'',
+    PEOPLE.length+' people'].filter(Boolean).join(' · ');
+}
+/* Trips are keyed (date, from, to), so a re-import updates rather than
+   duplicates; a trip edited more recently on this device is left alone. */
+async function importTrips(jsons){
+  let n=0;
+  for(const j of jsons){
+    let d;try{d=JSON.parse(j.text)}catch(e){continue}
+    const list=Array.isArray(d)?d:(d&&Array.isArray(d.trips)?d.trips:null);
+    if(!list)continue;
+    const keep=[];
+    list.forEach(t=>{
+      const date=String(t.date||'').slice(0,10),frm=ap(t.from||t.frm),to=ap(t.to);
+      if(!date||!frm||!to)return;
+      const id=date+'|'+frm+'|'+to;
+      const cur=TRIPS.find(x=>x.id===id);
+      if(cur&&cur.updated&&j.mtime&&new Date(cur.updated).getTime()>j.mtime)return;
+      keep.push({id:id,date:date,frm:frm,to:to,note:t.note||'',ldg:+t.landings||+t.ldg||0,
+        crew:(t.crew||[]).map(c=>({pid:c.id||slug(c.name||''),role:c.role||'CA'}))
+              .filter(c=>c.pid),
+        updated:new Date(j.mtime||Date.now()).toISOString()});
+    });
+    if(keep.length){await dbPut('assignments',keep);n+=keep.length}
+  }
+  if(n)TRIPS=await dbAll('assignments');
+  return n;
+}
+/* Names as well as ids: build_logbook.py has to survive an id it doesn't
+   know, and a human has to be able to read this. */
+function buildAssignments(list){
+  return JSON.stringify({blocktime:'assignments',version:1,exported:zdate(),
+    trips:list.slice().sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0).map(t=>({
+      date:t.date,from:t.frm,to:t.to,note:t.note||'',landings:+t.ldg||0,
+      crew:(t.crew||[]).map(c=>({id:c.pid,name:nameOf(c.pid),role:c.role,
+        logbook_name:((PEOPLE.find(p=>p.id===c.pid)||{}).aliases||[])[0]||''}))}))},null,2)+'\n';
+}
+function cwExport(){
+  if(!PEOPLE.length&&!TRIPS.length)return;
+  const enc=new TextEncoder();
+  const used={};
+  const files=PEOPLE.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(p=>{
+    let base=p.name.replace(/[^\w\- ]/g,'').trim()||p.id;
+    if(used[base])base=base+' '+(++used[base]);else used[base]=1;
+    return {name:'Crew/'+base+'.md',data:enc.encode(mdWrite(p))};
+  });
+  files.push({name:'assignments.json',data:enc.encode(buildAssignments(TRIPS))});
+  save(zipWrite(files),'block-time-crew-'+zdate()+'.zip');
+}
+
+/* ---------- WebDAV sync ----------
+   Optional. Off by default and the app is complete without it. Written
+   against plain WebDAV, not a Nextcloud API, so it also serves ownCloud,
+   Synology, Seafile, kDrive or anything else that speaks it.
+   Credentials live in this device's localStorage and nowhere else. */
+const b64=s=>{try{return btoa(unescape(encodeURIComponent(s)))}
+  catch(e){return Buffer.from(s,'utf8').toString('base64')}};
+
+function davCfg(){
+  const c=store.get('dav',{})||{};
+  return {url:(c.url||'').trim(),user:(c.user||'').trim(),pass:c.pass||'',
+          folder:(c.folder||'Crew').replace(/^\/+|\/+$/g,'')};
+}
+function davReady(c){return !!(c.url&&c.user&&c.pass)}
+function davBase(c){
+  let u=c.url.replace(/\/+$/,'');
+  /* Accept either a full WebDAV URL or just the server: the standard
+     Nextcloud/ownCloud path is filled in if the user pasted the bare host. */
+  if(!/remote\.php\/(web)?dav/i.test(u)&&!/\/dav/i.test(u))
+    u+='/remote.php/dav/files/'+encodeURIComponent(c.user);
+  return u+(c.folder?'/'+c.folder.split('/').map(encodeURIComponent).join('/'):'');
+}
+function davHeaders(c,extra){
+  return Object.assign({Authorization:'Basic '+b64(c.user+':'+c.pass)},extra||{});
+}
+/* Namespace-agnostic on purpose: servers use d:, D:, lp1: and friends. */
+function davParse(xml){
+  const out=[];
+  String(xml).split(/<[a-zA-Z0-9]*:?response[\s>]/).slice(1).forEach(b=>{
+    const g=re=>{const m=b.match(re);return m?m[1].trim():''};
+    const href=g(/<[a-zA-Z0-9]*:?href[^>]*>([\s\S]*?)<\/[a-zA-Z0-9]*:?href>/i);
+    if(!href)return;
+    const lm=g(/<[a-zA-Z0-9]*:?getlastmodified[^>]*>([\s\S]*?)<\/[a-zA-Z0-9]*:?getlastmodified>/i);
+    let name='';
+    try{name=decodeURIComponent(href.replace(/\/+$/,'').split('/').pop())}
+    catch(e){name=href.replace(/\/+$/,'').split('/').pop()}
+    out.push({name:name,href:href,dir:/<[a-zA-Z0-9]*:?collection\s*\/?>/i.test(b),
+              mtime:lm?Date.parse(lm)||0:0});
+  });
+  return out;
+}
+async function davList(c,fetchImpl){
+  const f=fetchImpl||fetch;
+  const r=await f(davBase(c)+'/',{method:'PROPFIND',
+    headers:davHeaders(c,{Depth:'1','Content-Type':'application/xml'}),
+    body:'<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop>'
+      +'<d:getlastmodified/><d:resourcetype/></d:prop></d:propfind>'});
+  if(r.status===404)return null;              // folder not there yet
+  if(!r.ok)throw new Error('PROPFIND '+r.status);
+  return davParse(await r.text()).filter(x=>!x.dir&&x.name);
+}
+async function davMkcol(c,fetchImpl){
+  const f=fetchImpl||fetch;
+  const r=await f(davBase(c),{method:'MKCOL',headers:davHeaders(c)});
+  if(!r.ok&&r.status!==405&&r.status!==301)throw new Error('MKCOL '+r.status);
+}
+async function davGet(c,name,fetchImpl){
+  const f=fetchImpl||fetch;
+  const r=await f(davBase(c)+'/'+encodeURIComponent(name),{headers:davHeaders(c)});
+  if(!r.ok)throw new Error('GET '+name+' '+r.status);
+  return r.text();
+}
+async function davPut(c,name,text,fetchImpl){
+  const f=fetchImpl||fetch;
+  const r=await f(davBase(c)+'/'+encodeURIComponent(name),{method:'PUT',
+    headers:davHeaders(c,{'Content-Type':'text/markdown; charset=utf-8'}),body:text});
+  if(!r.ok)throw new Error('PUT '+name+' '+r.status);
+}
+
+const fileFor=p=>(p.name.replace(/[^\w\- ]/g,'').trim()||p.id)+'.md';
+const tripsStamp=list=>list.reduce((a,t)=>Math.max(a,Date.parse(t.updated||0)||0),0);
+
+/* One pass: pull anything newer on the server, push anything newer here.
+
+   Both decisions are made against remembered state, never by comparing a
+   local clock to the server's: WebDAV reports modification times only to the
+   second, and the two machines' clocks need not agree at all.
+     davMtime  — the server timestamp this device has already reconciled with
+     davSynced — the local `updated` value last written to the server
+   After pushing, the folder is listed once more so the timestamps just
+   created are known, otherwise the next sync pulls back its own upload. */
+async function davSync(deps){
+  const {cfg,mergeOne,mergeTrips,writeMd,readMd,buildAssignments,
+         put,get,list,mkcol,say}=deps;
+  say('listing\u2026');
+  let remote=await list(cfg);
+  if(remote===null){say('creating folder\u2026');await mkcol(cfg);remote=[]}
+  const byName={};remote.forEach(r=>{byName[r.name]=r});
+
+  /* --- pull --- */
+  let pulled=0,pulledTrips=0,skipped=0;
+  for(const r of remote){
+    if(!/\.md$/i.test(r.name))continue;
+    const local=deps.peopleAfter().find(p=>fileFor(p)===r.name);
+    if(local&&r.mtime<=(local.davMtime||0))continue;
+    if(deps.isSkipped(r.name)===r.mtime)continue;   // known not to be a crew note
+    say('pulling '+r.name);
+    const txt=await get(cfg,r.name);
+    if(!deps.isCrew(txt)){deps.noteSkip(r.name,r.mtime);skipped++;continue}
+    const res=await mergeOne(readMd(txt,r.name),r.mtime);
+    if(res&&res.p){
+      res.p.davMtime=r.mtime;
+      /* If the file won, this device now holds exactly what the server holds,
+         so there is nothing to send back. If local edits won, leave
+         davSynced alone and the push below will carry them up. */
+      if(!res.kept)res.p.davSynced=res.p.updated;
+      await deps.markSynced(res.p);
+    }
+    pulled++;
+  }
+  const ra=byName['assignments.json'];
+  if(ra&&ra.mtime>deps.tripsMtime()){
+    say('pulling trips');
+    pulledTrips=await mergeTrips([{text:await get(cfg,'assignments.json'),mtime:ra.mtime}]);
+    deps.setTripsMtime(ra.mtime);
+  }
+
+  /* --- push --- */
+  let pushed=0;const sent=[];
+  for(const p of deps.peopleAfter()){
+    const fn=fileFor(p);
+    if(byName[fn]&&p.updated&&p.davSynced===p.updated)continue;
+    say('pushing '+fn);
+    await put(cfg,fn,writeMd(p));
+    p.davSynced=p.updated;sent.push(fn);pushed++;
+  }
+  const tAfter=deps.tripsAfter(),tStamp=tripsStamp(tAfter);
+  let sentTrips=false;
+  if(tAfter.length&&(!ra||deps.tripsSynced()!==tStamp)){
+    say('pushing trips');
+    await put(cfg,'assignments.json',buildAssignments(tAfter));
+    deps.setTripsSynced(tStamp);sentTrips=true;pushed++;
+  }
+
+  if(pushed){
+    const after=(await list(cfg))||[];
+    const m={};after.forEach(r=>{m[r.name]=r.mtime});
+    for(const p of deps.peopleAfter()){
+      const fn=fileFor(p);
+      if(sent.indexOf(fn)>=0&&m[fn]){p.davMtime=m[fn];await deps.markSynced(p)}
+    }
+    if(sentTrips&&m['assignments.json'])deps.setTripsMtime(m['assignments.json']);
+  }
+  return {pulled:pulled,pulledTrips:pulledTrips,pushed:pushed,skipped:skipped};
+}
+
+/* ---------- sync glue ---------- */
+function davFields(){
+  const c=store.get('dav',{})||{};
+  $('#dvUrl').value=c.url||'';$('#dvUser').value=c.user||'';
+  $('#dvPass').value=c.pass||'';$('#dvFolder').value=c.folder||'Crew';
+}
+function davCollect(){
+  const c={url:$('#dvUrl').value.trim(),user:$('#dvUser').value.trim(),
+           pass:$('#dvPass').value,folder:$('#dvFolder').value.trim()||'Crew'};
+  store.set('dav',c);return davCfg();
+}
+const davMsg=t=>{const e=$('#dvMsg');if(e)e.textContent=t};
+function davExplain(err){
+  const m=String(err&&err.message||err);
+  if(/Failed to fetch|NetworkError|Load failed/i.test(m))
+    return 'Could not reach the server. Either the address is wrong, or the server is '
+      +'refusing requests from this site (Nextcloud: install the WebAppPassword app).';
+  if(/ 401| 403/.test(m))return 'Rejected: check the username and app password.';
+  if(/ 404/.test(m))return 'Not found: check the server address and folder.';
+  if(/ 405/.test(m))return 'The server refused that method — is this really a WebDAV address?';
+  return m;
+}
+async function davRun(testOnly){
+  const cfg=davCollect();
+  if(!davReady(cfg)){davMsg('Fill in the server, username and app password.');return}
+  try{
+    if(testOnly){
+      const l=await davList(cfg);
+      davMsg(l===null?'Reachable — the folder does not exist yet; Sync now will create it.'
+                     :'Reachable — '+l.filter(x=>/\.md$/i.test(x.name)).length+' note(s) on the server.');
+      return;
+    }
+    const r=await davSync({
+      cfg:cfg,people:PEOPLE,trips:TRIPS,
+      list:davList,mkcol:davMkcol,get:davGet,put:davPut,
+      readMd:mdParse,writeMd:mdWrite,buildAssignments:buildAssignments,
+      mergeOne:async(p,mt)=>{
+        const r=mergePerson(p,mt);
+        const i=PEOPLE.findIndex(x=>x.id===r.p.id);
+        if(i<0)PEOPLE.push(r.p);else PEOPLE[i]=r.p;
+        return r},
+      mergeTrips:importTrips,
+      peopleAfter:()=>PEOPLE,tripsAfter:()=>TRIPS,
+      markSynced:p=>dbPut('people',p),
+      isCrew:looksLikeCrew,
+      isSkipped:n=>(store.get('davSkip',{})||{})[n],
+      noteSkip:(n,mt)=>{const m=store.get('davSkip',{})||{};m[n]=mt;store.set('davSkip',m)},
+      tripsSynced:()=>store.get('davTrips',0),
+      setTripsSynced:v=>store.set('davTrips',v),
+      tripsMtime:()=>store.get('davTripsMtime',0),
+      setTripsMtime:v=>store.set('davTripsMtime',v),
+      say:davMsg
+    });
+    store.set('davLast',new Date().toISOString());
+    davMsg('Done — pulled '+r.pulled+', pushed '+r.pushed
+      +(r.pulledTrips?', '+r.pulledTrips+' trip(s) in':'')
+      +(r.skipped?', ignored '+r.skipped+' file(s) that are not crew notes':'')
+      +'. '+PEOPLE.length+' people here.');
+    if(cwMode==='people')cwRender();else tRender();
+  }catch(err){davMsg(davExplain(err))}
+}
+
+/* ---------- wiring ---------- */
+$('#cwSearch').oninput=e=>{cwQ=e.target.value;cwRender()};
+$('#cwRows').addEventListener('click',e=>{
+  const b=e.target.closest('.cwrow');if(b)cwShow(b.dataset.id)});
+$('#cwBack').onclick=cwHide;
+$('#cwEditHdr').onclick=()=>{cwHdr=!cwHdr;cwEd=null;cwShow()};
+$('#cwAdd').onclick=()=>{
+  const n=$('#cwNew');n.hidden=!n.hidden;
+  if(!n.hidden){$('#cwNewName').value='';$('#cwNewName').focus()}
+};
+async function cwCreate(){
+  const inp=$('#cwNewName'),name=inp.value.trim();if(!name)return;
+  const id=slug(name);
+  const dup=PEOPLE.find(p=>p.id===id);
+  if(dup){
+    $('#cwNew').hidden=true;inp.value='';
+    $('#cwCount').textContent=dup.name+' is already here \u2014 opening their card';
+    cwShow(id);return;
+  }
+  const p={id:id,name:name,aliases:[logName(name)].filter(Boolean),role:'Crew',
+           flights_together:0,last_flown:'',tags:['crew'],sections:[]};
+  PEOPLE.push(p);inp.value='';$('#cwNew').hidden=true;cwRender();cwShow(id);
+  cwSave(p);
+}
+$('#cwNewSave').onclick=cwCreate;
+$('#cwNewName').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();cwCreate()}};
+$('#cwImport').onclick=()=>$('#cwFile').click();
+$('#cwFile').onchange=e=>{const f=[...e.target.files];e.target.value='';if(f.length)cwFiles(f)};
+$('#cwExport').onclick=cwExport;
+davFields();
+$('#dvTest').onclick=()=>davRun(true);
+$('#dvSync').onclick=()=>davRun(false);
+['dvUrl','dvUser','dvPass','dvFolder'].forEach(id=>$('#'+id).onchange=()=>davCollect());
+$('#cwSeg').addEventListener('click',e=>{const b=e.target.closest('button');if(b)setMode(b.dataset.v)});
+$('#tNew').onclick=tNewTrip;
+$('#tRows').addEventListener('click',e=>{const b=e.target.closest('.trow');if(b)tShow(b.dataset.id)});
+$('#tBack').onclick=()=>{tOpen=null;setMode('trips')};
+
+async function cwInit(){
+  try{PEOPLE=await dbAll('people')}catch(err){PEOPLE=[]}
+  try{TRIPS=await dbAll('assignments')}catch(err){TRIPS=[]}
+  setMode(store.get('cwMode','trips'));
+  /* rInit() runs before this resolves, so the Crew Rest button was evaluated
+     against an empty TRIPS and hid itself until a tab switch. Refresh it here. */
+  if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(()=>{});
+}
+
+/* =========================================================
+   SHELL: tabs, clock, settings, keyboard
+   ========================================================= */
+let tab=store.get('tab','plan');
+function showTab(t){
+  tab=t;store.set('tab',t);
+  document.querySelectorAll('main .screen').forEach(s=>s.hidden=s.id!==t);
+  document.querySelectorAll('nav button').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.tab===t)));
+  if(t==='plan')pRender('init');
+  if(t==='rest')rRender();
+  if(t==='crew'){if(cwMode==='people')cwRender();else tRender();$('#cwSearch').blur()}
+}
+document.querySelector('nav').addEventListener('click',e=>{const b=e.target.closest('button');if(b)showTab(b.dataset.tab)});
+
+function tick(){
+  const d=new Date();
+  const z=fmtClock(d.getUTCHours()*60+d.getUTCMinutes());
+  $('#zclock').innerHTML=`${z}Z${OFF!=null?`<small>${loc(nowZ())}</small>`:''}`;
+}
+setInterval(()=>{tick();if(tab==='rest'&&!document.activeElement.matches('input'))rRender()},20000);
+
+/* ---------- QR code ----------
+   A crew-room problem: you cannot AirDrop to an Android phone, and reading a
+   URL out loud gets it wrong. A QR works on any camera, needs no contact
+   details and no signal. Byte mode, error level M, versions 1-10 (up to 213
+   bytes) — far more than a URL needs. Self-contained; no library. */
+const QRTAB={ /* version: ec codewords per block, then block groups */
+  1:[10,1,16,0,0],   2:[16,1,28,0,0],  3:[26,1,44,0,0],  4:[18,2,32,0,0],
+  5:[24,2,43,0,0],   6:[16,4,27,0,0],  7:[18,4,31,0,0],  8:[22,2,38,2,39],
+  9:[22,3,36,2,37], 10:[26,4,43,1,44]};
+const QRALIGN={1:[],2:[6,18],3:[6,22],4:[6,26],5:[6,30],6:[6,34],
+  7:[6,22,38],8:[6,24,42],9:[6,26,46],10:[6,28,50]};
+
+const GEXP=new Uint8Array(512),GLOG=new Uint8Array(256);
+(function(){let x=1;for(let i=0;i<255;i++){GEXP[i]=x;GLOG[x]=i;x<<=1;if(x&0x100)x^=0x11D}
+  for(let i=255;i<512;i++)GEXP[i]=GEXP[i-255]})();
+const gmul=(a,b)=>(a&&b)?GEXP[GLOG[a]+GLOG[b]]:0;
+
+function qrGen(n){                       // generator polynomial of degree n
+  let p=[1];
+  for(let i=0;i<n;i++){
+    const q=[...p,0];
+    for(let j=0;j<p.length;j++)q[j+1]^=gmul(p[j],GEXP[i]);
+    p=q;
+  }
+  return p;
+}
+function qrEcc(data,n){
+  const g=qrGen(n),r=new Array(n).fill(0);
+  for(const d of data){
+    const f=d^r[0];
+    r.shift();r.push(0);
+    if(f)for(let i=0;i<n;i++)r[i]^=gmul(g[i+1],f);
+  }
+  return r;
+}
+function qrBits(bytes){
+  /* smallest version that fits, then mode + length + data + padding */
+  let v=0,cap=0;
+  for(let i=1;i<=10;i++){
+    const t=QRTAB[i],dc=t[1]*t[2]+t[3]*t[4],cci=i<10?8:16;
+    if(dc*8>=4+cci+bytes.length*8){v=i;cap=dc;break}
+  }
+  if(!v)return null;                     // too long for version 10
+  const bits=[],push=(val,n)=>{for(let i=n-1;i>=0;i--)bits.push((val>>i)&1)};
+  push(4,4);                             // byte mode
+  push(bytes.length,v<10?8:16);
+  for(const b of bytes)push(b,8);
+  for(let i=0;i<4&&bits.length<cap*8;i++)bits.push(0);
+  while(bits.length%8)bits.push(0);
+  const words=[];
+  for(let i=0;i<bits.length;i+=8){let w=0;for(let j=0;j<8;j++)w=(w<<1)|bits[i+j];words.push(w)}
+  const PAD=[0xEC,0x11];
+  for(let i=0;words.length<cap;i++)words.push(PAD[i%2]);
+  return {v:v,words:words};
+}
+function qrCodewords(v,words){
+  const [ec,g1,d1,g2,d2]=QRTAB[v];
+  const blocks=[];let at=0;
+  for(let i=0;i<g1;i++){blocks.push(words.slice(at,at+d1));at+=d1}
+  for(let i=0;i<g2;i++){blocks.push(words.slice(at,at+d2));at+=d2}
+  const eccs=blocks.map(b=>qrEcc(b,ec));
+  const out=[],maxd=Math.max(d1,d2||0);
+  for(let i=0;i<maxd;i++)for(const b of blocks)if(i<b.length)out.push(b[i]);
+  for(let i=0;i<ec;i++)for(const e of eccs)out.push(e[i]);
+  return out;
+}
+function qrBCH(val,poly,deg){
+  let v=val<<deg;
+  const bl=x=>{let n=0;while(x){n++;x>>>=1}return n};
+  while(bl(v)-1>=deg+ (bl(poly)-1) - (bl(poly)-1) + (bl(poly)-1) - (bl(poly)-1) + (bl(poly)-1)-1+1-1){break}
+  const pl=bl(poly);
+  while(bl(v)>=pl)v^=poly<<(bl(v)-pl);
+  return (val<<deg)|v;
+}
+function qrMatrix(text,forceMask){
+  const bytes=new TextEncoder().encode(text);
+  const enc=qrBits(bytes);
+  if(!enc)return null;
+  const v=enc.v,size=v*4+17;
+  const grid=Array.from({length:size},()=>new Int8Array(size).fill(-1));
+  const set=(r,c,val)=>{if(r>=0&&c>=0&&r<size&&c<size)grid[r][c]=val};
+  const finder=(r,c)=>{
+    for(let i=-1;i<8;i++)for(let j=-1;j<8;j++){
+      const rr=r+i,cc=c+j;
+      if(rr<0||cc<0||rr>=size||cc>=size)continue;
+      const ring=(i>=0&&i<=6&&j>=0&&j<=6)
+        ? (i===0||i===6||j===0||j===6||(i>=2&&i<=4&&j>=2&&j<=4)) : false;
+      set(rr,cc,ring?1:0);
+    }
+  };
+  finder(0,0);finder(0,size-7);finder(size-7,0);
+  for(let i=8;i<size-8;i++){set(6,i,i%2===0?1:0);set(i,6,i%2===0?1:0)}
+  for(const r of QRALIGN[v])for(const c of QRALIGN[v]){
+    if((r===6&&c===6)||(r===6&&c===size-7)||(r===size-7&&c===6))continue;
+    for(let i=-2;i<=2;i++)for(let j=-2;j<=2;j++)
+      set(r+i,c+j,(Math.abs(i)===2||Math.abs(j)===2||(i===0&&j===0))?1:0);
+  }
+  set(size-8,8,1);                                    // dark module
+  /* reserve the format/version areas so data placement steps over them */
+  for(let i=0;i<9;i++){if(grid[8][i]<0)set(8,i,0);if(grid[i][8]<0)set(i,8,0)}
+  for(let i=size-8;i<size;i++){if(grid[8][i]<0)set(8,i,0)}
+  for(let i=size-8;i<size;i++){if(grid[i][8]<0)set(i,8,0)}
+  if(v>=7){
+    for(let i=0;i<18;i++){
+      set(size-11+(i%3),Math.floor(i/3),0);
+      set(Math.floor(i/3),size-11+(i%3),0);
+    }
+  }
+  const reserved=grid.map(row=>row.map(x=>x>=0));
+
+  const cw=qrCodewords(v,enc.words);
+  const dbits=[];for(const b of cw)for(let i=7;i>=0;i--)dbits.push((b>>i)&1);
+  let bi=0,up=true;
+  for(let c=size-1;c>=0;c-=2){
+    if(c===6)c=5;
+    for(let k=0;k<size;k++){
+      const r=up?size-1-k:k;
+      for(let dc=0;dc<2;dc++){
+        const cc=c-dc;
+        if(cc<0||reserved[r][cc])continue;
+        grid[r][cc]=bi<dbits.length?dbits[bi++]:0;
+      }
+    }
+    up=!up;
+  }
+
+  const masker=[
+    (i,j)=>(i+j)%2===0,
+    (i,j)=>i%2===0,
+    (i,j)=>j%3===0,
+    (i,j)=>(i+j)%3===0,
+    (i,j)=>(Math.floor(i/2)+Math.floor(j/3))%2===0,
+    (i,j)=>((i*j)%2)+((i*j)%3)===0,
+    (i,j)=>((((i*j)%2)+((i*j)%3))%2)===0,
+    (i,j)=>((((i+j)%2)+((i*j)%3))%2)===0];
+
+  function penalty(g){
+    let p=0;
+    const run=line=>{
+      /* spec: a run of (5 + i) modules scores N1 + i, with N1 = 3 -> length - 2 */
+      let n=1,s=0;
+      for(let i=1;i<line.length;i++){
+        if(line[i]===line[i-1])n++;
+        else{if(n>=5)s+=n-2;n=1}
+      }
+      if(n>=5)s+=n-2;
+      return s;
+    };
+    for(let i=0;i<size;i++){
+      p+=run(Array.from({length:size},(_,j)=>g[i][j]));
+      p+=run(Array.from({length:size},(_,j)=>g[j][i]));
+    }
+    for(let i=0;i<size-1;i++)for(let j=0;j<size-1;j++){
+      const a=g[i][j];
+      if(a===g[i][j+1]&&a===g[i+1][j]&&a===g[i+1][j+1])p+=3;
+    }
+    /* 1:1:3:1:1 preceded or followed by a light area 4 wide: 40 once per
+       occurrence, not once per side, and a truncated light area at the symbol
+       edge still counts. Overlapping matches after a hit are skipped. */
+    const PAT=[1,0,1,1,1,0,1];
+    const at=(line,i)=>PAT.every((x,k)=>line[i+k]===x);
+    const find=(line,from)=>{for(let i=from;i+7<=size;i++)if(at(line,i))return i;return -1};
+    const lit=(line,a,b)=>{for(let i=Math.max(a,0);i<Math.min(b,size);i++)if(line[i])return true;return false};
+    const scan=line=>{
+      let s=0,i=find(line,0);
+      while(i>=0){
+        let next=i+4;
+        if(i===0||i===size-7||!lit(line,i-4,i)||!lit(line,i+7,i+11)){s+=40;next=i+7}
+        i=find(line,next);
+      }
+      return s;
+    };
+    for(let i=0;i<size;i++){
+      p+=scan(Array.from({length:size},(_,j)=>g[i][j]));
+      p+=scan(Array.from({length:size},(_,j)=>g[j][i]));
+    }
+    let dark=0;
+    for(let i=0;i<size;i++)for(let j=0;j<size;j++)dark+=g[i][j];
+    p+=10*Math.floor(Math.abs(dark*100/(size*size)-50)/5);
+    return p;
+  }
+
+  let best=null,bestP=Infinity;
+  const tries=(forceMask==null)?[0,1,2,3,4,5,6,7]:[forceMask];
+  for(const m of tries){
+    const g=grid.map(r=>Array.from(r));
+    for(let i=0;i<size;i++)for(let j=0;j<size;j++)
+      if(!reserved[i][j]&&masker[m](i,j))g[i][j]^=1;
+    /* format info: level M = 00, then the mask */
+    const fmt=qrBCH((0<<3)|m,0x537,10)^0x5412;
+    const fb=i=>(fmt>>i)&1;
+    /* grid is [row][col]. The vertical strip (column 8, rows 0-5,7,8) carries
+       bits 0-7; the horizontal strip (row 8) carries bits 7-14. Getting these
+       two the wrong way round still produces a plausible-looking symbol. */
+    for(let i=0;i<=5;i++)g[i][8]=fb(i);
+    g[7][8]=fb(6);g[8][8]=fb(7);g[8][7]=fb(8);
+    for(let i=9;i<=14;i++)g[8][14-i]=fb(i);
+    for(let i=0;i<=7;i++)g[8][size-1-i]=fb(i);
+    for(let i=8;i<=14;i++)g[size-15+i][8]=fb(i);
+    g[size-8][8]=1;
+    if(v>=7){
+      const vi=qrBCH(v,0x1F25,12);
+      for(let i=0;i<18;i++){
+        const b=(vi>>i)&1;
+        g[size-11+(i%3)][Math.floor(i/3)]=b;
+        g[Math.floor(i/3)][size-11+(i%3)]=b;
+      }
+    }
+    const p=(forceMask==null)?penalty(g):0;
+    if(p<bestP){bestP=p;best=g}
+  }
+  return {size:size,version:v,modules:best};
+}
+function qrSvg(text,px){
+  const q=qrMatrix(text);
+  if(!q)return '';
+  const Q=4,n=q.size+Q*2,s=px||Math.min(260,n*7);
+  let d='';
+  for(let i=0;i<q.size;i++)for(let j=0;j<q.size;j++)
+    if(q.modules[i][j])d+='M'+(j+Q)+' '+(i+Q)+'h1v1h-1z';
+  /* fixed black-on-white: scanners expect it and it must not follow the theme */
+  return '<svg viewBox="0 0 '+n+' '+n+'" width="'+s+'" height="'+s+'" '
+    +'role="img" aria-label="QR code for this app" style="display:block;border-radius:8px">'
+    +'<rect width="'+n+'" height="'+n+'" fill="#fff"/>'
+    +'<path d="'+d+'" fill="#000"/></svg>';
+}
+
+/* The native share sheet, so AirDrop / Messages / anything else is one tap.
+   Falls back to the clipboard where there is no sheet (most desktops), and to
+   showing the address if even that is blocked. */
+const APPURL=()=>location.origin+location.pathname;
+async function shareApp(){
+  const say=t=>{const e=$('#sShareMsg');if(e)e.textContent=t};
+  const url=APPURL();
+  const copy=async()=>{
+    try{await navigator.clipboard.writeText(url);say('link copied');}
+    catch(e){say(url)}
+  };
+  if(navigator.share){
+    try{await navigator.share({title:'Block Time',
+      text:'Block Time \u2014 offline flight-time calculator for pilots',url:url});
+      say('');return;}
+    catch(e){
+      if(e&&e.name==='AbortError'){say('');return}   // they closed the sheet
+      return copy();
+    }
+  }
+  return copy();
+}
+
+$('#gear').onclick=()=>{const s=$('#settings');s.hidden=!s.hidden;$('#gear').setAttribute('aria-expanded',String(!s.hidden))};
+const sOff=$('#sOff');
+sOff.value=store.get('off','');OFF=parseOffset(sOff.value);
+sOff.oninput=()=>{store.set('off',sOff.value);OFF=parseOffset(sOff.value);tick();eRender();pRender();rRender()};
+$('#sShare').onclick=shareApp;
+setSeg('#sSeat',store.get('seat','FO'));
+$('#sSeat').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
+  store.set('seat',b.dataset.v);setSeg('#sSeat',b.dataset.v)});
+$('#sQr').onclick=()=>{
+  const box=$('#sQrBox');
+  box.hidden=!box.hidden;
+  $('#sQr').textContent=box.hidden?'QR code':'Hide QR';
+  if(!box.hidden&&!box.firstChild)box.innerHTML=qrSvg(APPURL());
+};
+
+document.addEventListener('keydown',e=>{
+  if(e.target.matches('input')||e.metaKey||e.ctrlKey)return;
+  const k=e.key;
+  const map={Backspace:'back'};
+  if(tab==='calc'){
+    const m={...map,'+':'+','-':'−','*':'×','x':'×','/':'÷','=':'=',Enter:'=',Escape:'C'};
+    if(/^\d$/.test(k))cKey(k);else if(m[k])cKey(m[k]);else return;
+  }else if(tab==='plan'){
+    const m={...map,Enter:'enter',Escape:'undo'};
+    if(/^\d$/.test(k))pKey(k);else if(m[k])pKey(m[k]);else return;
+  }else if(tab==='elapsed'){
+    const m={...map,Escape:'clr'};
+    if(/^\d$/.test(k))eKey(k);else if(m[k])eKey(m[k]);else return;
+  }else return;
+  e.preventDefault();
+});
+
+tick();cRender();eRender();rInit();cwInit();showTab(tab);
+})();
+</script>
+<script>
+/* Service worker + a visible update path: the app tells you when a new
+   version is ready instead of silently swapping on some later launch. */
+(function(){
+  const msg=t=>{const e=document.getElementById('sCheckMsg');if(e)e.textContent=t};
+  if(!('serviceWorker' in navigator)){msg('');return}
+  let reg=null,reloading=false;
+  /* True only if a worker was already in charge: a first-ever install also
+     fires controllerchange (via clients.claim) and must not reload. */
+  const wasControlled=!!navigator.serviceWorker.controller;
+
+  function offer(worker){
+    if(document.getElementById('btUpd'))return;
+    const b=document.createElement('button');
+    b.id='btUpd';b.className='upd';b.type='button';
+    b.textContent='New version ready \u2014 tap to update';
+    b.onclick=()=>{b.textContent='Updating\u2026';worker.postMessage({type:'skipWaiting'})};
+    document.body.appendChild(b);
+    msg('ready');
+  }
+  function watch(w){
+    if(!w)return;
+    w.addEventListener('statechange',()=>{
+      if(w.state==='installed'&&navigator.serviceWorker.controller)offer(w);
+    });
+  }
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{
+    if(reloading||!wasControlled)return;reloading=true;location.reload();
+  });
+
+  function ver(){
+    const c=navigator.serviceWorker.controller;
+    const el=document.getElementById('sVer');if(!el)return;
+    if(!c){el.textContent='not installed';return}
+    const ch=new MessageChannel();
+    ch.port1.onmessage=e=>{el.textContent=(e.data&&e.data.version)||'installed'};
+    c.postMessage({type:'version'},[ch.port2]);
+  }
+
+  async function check(manual){
+    if(!reg)return;
+    if(manual)msg('checking\u2026');
+    try{
+      await reg.update();
+      if(reg.waiting&&navigator.serviceWorker.controller){offer(reg.waiting)}
+      else if(manual)msg('up to date');
+    }catch(e){if(manual)msg(navigator.onLine?'check failed':'offline')}
+  }
+
+  addEventListener('load',async()=>{
+    try{reg=await navigator.serviceWorker.register('sw.js')}catch(e){msg('');return}
+    ver();
+    if(reg.waiting&&navigator.serviceWorker.controller)offer(reg.waiting);
+    watch(reg.installing);
+    reg.addEventListener('updatefound',()=>watch(reg.installing));
+    const btn=document.getElementById('sCheck');
+    if(btn)btn.onclick=()=>check(true);
+    let last=0;
+    document.addEventListener('visibilitychange',()=>{
+      if(document.visibilityState!=='visible')return;
+      const t=Date.now();if(t-last<9e5)return;last=t;check(false);
+    });
+  });
+})();
+</script>
+</body>
+</html>

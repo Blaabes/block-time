@@ -1,0 +1,746 @@
+<title>Block Time</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=B612:wght@400;700&family=B612+Mono:wght@400;700&display=swap">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Block Time">
+<style>
+/* Layout: one-screen instrument panel. Header with live Zulu clock, a working area per tool, keypad docked at thumb height, tabs at the bottom. EFIS color logic: cyan = entries/actions, magenta = active point, amber = caution. */
+:root{
+  --bg:#0b1015; --panel:#121a21; --panel2:#18222b; --line:#24313b;
+  --fg:#e4ecf1; --muted:#8493a1;
+  --cyan:#4fc3e6; --magenta:#e25ad1; --amber:#f0a53a; --sand:#d8c69c;
+  --key:#19232c; --keyhi:#25333e; --onaccent:#061016;
+  --display:'B612',system-ui,-apple-system,sans-serif;
+  --mono:'B612 Mono',ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="dark"]){
+    --bg:#e8edf1; --panel:#ffffff; --panel2:#f3f6f8; --line:#ccd6dd;
+    --fg:#0e1920; --muted:#556774;
+    --cyan:#06779b; --magenta:#a82996; --amber:#955804; --sand:#78663a;
+    --key:#ffffff; --keyhi:#dfe7ec; --onaccent:#ffffff;
+    color-scheme:light;
+  }
+}
+:root[data-theme="light"]{
+  --bg:#e8edf1; --panel:#ffffff; --panel2:#f3f6f8; --line:#ccd6dd;
+  --fg:#0e1920; --muted:#556774;
+  --cyan:#06779b; --magenta:#a82996; --amber:#955804; --sand:#78663a;
+  --key:#ffffff; --keyhi:#dfe7ec; --onaccent:#ffffff;
+  color-scheme:light;
+}
+*,*::before,*::after{box-sizing:border-box}
+html{box-sizing:border-box;height:100%}
+body{height:100%;background:var(--bg);color:var(--fg);font-family:var(--display);-webkit-tap-highlight-color:transparent;overscroll-behavior:none}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;touch-action:manipulation}
+button:focus-visible,input:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+input{font:inherit;color:var(--fg)}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.lbl{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+
+.app{height:100%;max-width:560px;margin:0 auto;padding-inline:16px;display:grid;grid-template-rows:auto 1fr auto;min-height:0}
+header{padding-block:10px 8px}
+.bar{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.brand{font-weight:700;letter-spacing:.16em;font-size:13px;text-transform:uppercase}
+.brand span{color:var(--cyan)}
+.clock{display:flex;align-items:center;gap:10px}
+.zclock{font-family:var(--mono);font-size:17px;color:var(--cyan)}
+.zclock small{color:var(--muted);font-size:12px;margin-left:6px}
+.gear{width:34px;height:34px;border-radius:8px;border:1px solid var(--line);display:grid;place-items:center;color:var(--muted)}
+.gear svg{width:18px;height:18px}
+.settings{margin-top:10px;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--panel);display:grid;gap:10px;font-size:14px;line-height:1.45}
+.settings label{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.settings p{margin:0;color:var(--muted);font-size:13px}
+
+main{position:relative;min-height:0;overflow:hidden}
+.screen{height:100%;display:flex;flex-direction:column;gap:10px;min-height:0;padding-bottom:10px}
+.screen.scroll{overflow-y:auto;-webkit-overflow-scrolling:touch;gap:14px}
+
+nav{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--line);padding-bottom:6px}
+nav button{padding:10px 4px 8px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);border-top:2px solid transparent;margin-top:-1px}
+nav button[aria-selected="true"]{color:var(--fg);border-top-color:var(--cyan)}
+
+/* keypad */
+.keypad{display:grid;grid-template-columns:repeat(4,1fr);grid-auto-rows:52px;gap:7px;flex:none}
+.key{border-radius:10px;background:var(--key);border:1px solid var(--line);font-family:var(--mono);font-size:22px;user-select:none;-webkit-user-select:none}
+.key:active{background:var(--keyhi)}
+.key.op{color:var(--cyan);font-size:24px}
+.key.fn{font-family:var(--display);font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.key.go{background:var(--cyan);border-color:var(--cyan);color:var(--onaccent);font-family:var(--display);font-weight:700;font-size:15px;letter-spacing:.1em;text-transform:uppercase}
+.key.go:active{filter:brightness(1.15)}
+
+/* calculator */
+.tapewrap{flex:1;min-height:0;display:flex;flex-direction:column;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+.tape-head{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line)}
+.link{color:var(--cyan);font-size:13px;padding:4px 0}
+.tape{flex:1;overflow-y:auto;padding:8px 12px;font-family:var(--mono);font-size:16px;display:flex;flex-direction:column;gap:2px}
+.tape .ln{display:flex;justify-content:space-between;gap:12px}
+.tape .ln .o{color:var(--cyan);width:1.5em}
+.tape .ln.tot{border-top:1px solid var(--line);padding-top:3px;margin-bottom:6px;font-weight:700}
+.tape .ln.tot .d{color:var(--muted);font-weight:400;font-size:13px}
+.tape .empty{color:var(--muted);font-family:var(--display);font-size:13px;line-height:1.5;margin:auto 0}
+.readout{display:grid;grid-template-columns:auto 1fr;align-items:baseline;gap:4px 12px;padding:4px 4px 0}
+.ro-op{font-family:var(--mono);font-size:26px;color:var(--cyan);min-width:1ch}
+.ro-val{font-family:var(--mono);font-size:44px;text-align:right;line-height:1.05;overflow-wrap:anywhere}
+.ro-sub{grid-column:1/-1;text-align:right;color:var(--muted);font-size:13px;min-height:1.2em}
+
+/* elapsed */
+.el-fields{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.field{display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--panel);text-align:left}
+.field.active{border-color:var(--cyan);box-shadow:inset 0 0 0 1px var(--cyan)}
+.fv{font-family:var(--mono);font-size:34px;letter-spacing:.04em}
+.fv .z{font-size:16px;color:var(--muted);margin-left:2px}
+.fv .ph{color:var(--muted)}
+.el-result{padding:14px;border-radius:12px;background:var(--panel2);display:grid;gap:4px}
+.el-result .big{font-family:var(--mono);font-size:48px;line-height:1.05}
+.el-result .sub{color:var(--muted);font-size:13px;min-height:1.2em}
+.el-result .row2{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.spacer{flex:1}
+
+/* flight plan */
+.summary{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:end;padding:10px 12px;border-radius:12px;background:var(--panel2)}
+.stat{display:flex;flex-direction:column;gap:2px;min-width:0}
+.stat .val{font-family:var(--mono);font-size:20px}
+.stat.total{align-items:center}
+.stat.total .val{font-size:32px;line-height:1}
+.stat.eta{align-items:flex-end}
+.tag{display:inline-block;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--amber);border:1px solid var(--amber);border-radius:4px;padding:1px 5px;margin-left:6px;vertical-align:2px}
+.list{flex:1;min-height:0;overflow-y:auto;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+.row{display:grid;grid-template-columns:2.6em 1fr 1fr 1fr;gap:8px;padding:7px 12px;font-family:var(--mono);font-size:15px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums;width:100%;text-align:right}
+.row.loc{grid-template-columns:2.6em 1fr 1fr 1fr 1fr}
+.row.noeta{grid-template-columns:2.6em 1fr 1fr}
+.stat.eta{border-radius:8px;padding:2px 4px;margin:-2px -4px;text-align:right}
+.stat.eta.unset .val{color:var(--cyan)}
+.stat.eta.active{box-shadow:0 0 0 1px var(--amber)}
+.row>span:first-child{text-align:left;color:var(--muted)}
+.row.head{position:sticky;top:0;background:var(--panel);font-family:var(--display);font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);z-index:1}
+.row .t{font-weight:700}
+.row .l{color:var(--muted)}
+.row.cur{box-shadow:inset 3px 0 0 var(--magenta)}
+.row.cur>span:first-child,.row.cur .t{color:var(--magenta)}
+.row.sel{background:var(--keyhi);box-shadow:inset 3px 0 0 var(--cyan)}
+.row.sel>span:first-child{color:var(--cyan)}
+.list .empty{padding:18px 14px;color:var(--muted);font-size:14px;line-height:1.5}
+.entry{display:grid;grid-template-columns:1fr auto;align-items:center;gap:2px 12px;padding:8px 12px;border-radius:12px;border:1px solid var(--cyan)}
+.entry.dep{border-color:var(--amber)}
+.entry-lbl{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--cyan)}
+.entry.dep .entry-lbl{color:var(--amber)}
+.entry-val{grid-row:span 2;font-family:var(--mono);font-size:34px;letter-spacing:.08em}
+.entry-val .ph{color:var(--muted)}
+.entry-last{font-size:12px;color:var(--muted);min-height:1.2em}
+.chips{display:flex;gap:6px;overflow-x:auto;flex:none;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;padding:7px 11px;border-radius:999px;border:1px solid var(--line);background:var(--panel);font-size:12px;white-space:nowrap}
+.chip b{color:var(--cyan);font-weight:700}
+.chip.warn{border-color:var(--amber);color:var(--amber)}
+.chip.act{border-color:var(--cyan);color:var(--cyan)}
+
+/* crew rest */
+.card{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:12px;display:grid;gap:12px}
+.card h2{margin:0;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:400;display:flex;justify-content:space-between;align-items:center}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.inp{display:grid;gap:4px;min-width:0}
+.inp input{width:100%;font-family:var(--mono);font-size:18px;padding:9px 10px;border-radius:8px;border:1px solid var(--line);background:var(--panel2)}
+.inp input.name{font-family:var(--display);font-size:16px}
+.inp .hint{font-size:12px;color:var(--muted);min-height:1.2em}
+.seg{display:flex;border:1px solid var(--line);border-radius:9px;padding:3px;gap:3px;background:var(--panel2)}
+.seg button{flex:1;padding:8px 6px;border-radius:7px;font-size:13px;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--panel);color:var(--fg);box-shadow:0 0 0 1px var(--line)}
+.rounds{display:grid;gap:8px}
+.round{display:grid;grid-template-columns:5.2em 1fr auto 34px;align-items:center;gap:8px}
+.round .rl{font-size:13px;color:var(--muted)}
+.round input{width:100%;font-family:var(--mono);font-size:18px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--panel2)}
+.round .rn{font-size:12px;color:var(--muted);white-space:nowrap}
+.round .x{height:34px;border-radius:8px;color:var(--muted);border:1px solid var(--line)}
+.check{display:flex;align-items:center;gap:8px;font-size:14px}
+.check input{width:18px;height:18px;accent-color:var(--cyan)}
+.status{padding:10px 12px;border-radius:10px;font-size:14px;line-height:1.45;background:var(--panel2);border-left:3px solid var(--cyan)}
+.status.warn{border-left-color:var(--amber);color:var(--fg)}
+.status.warn b{color:var(--amber)}
+.status.err{border-left-color:var(--amber)}
+.tl{position:relative;height:30px;border-radius:6px;background:var(--panel2);overflow:hidden;border:1px solid var(--line)}
+.tl .seg-b{position:absolute;top:0;bottom:0;background:repeating-linear-gradient(135deg,var(--line) 0 4px,transparent 4px 8px)}
+.tl .br{position:absolute;top:4px;bottom:4px;border-radius:3px;font-family:var(--mono);font-size:11px;color:var(--onaccent);display:flex;align-items:center;justify-content:center;overflow:hidden;white-space:nowrap}
+.tl .nowline{position:absolute;top:0;bottom:0;width:2px;background:var(--fg)}
+.tl-lbls{display:flex;justify-content:space-between;font-family:var(--mono);font-size:12px;color:var(--muted);margin-top:4px}
+.sched{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+.sched th{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:400;text-align:right;padding:4px 6px;border-bottom:1px solid var(--line)}
+.sched th:first-child,.sched td:first-child{text-align:left}
+.sched td{font-family:var(--mono);font-size:15px;text-align:right;padding:8px 6px;border-bottom:1px solid var(--line)}
+.sched td.who{font-family:var(--display);font-size:14px;white-space:nowrap}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:7px;vertical-align:0}
+.sched tr.now td{background:var(--keyhi)}
+.pill{font-family:var(--display);font-size:10px;letter-spacing:.08em;border-radius:4px;padding:1px 5px;margin-left:6px;background:var(--magenta);color:var(--onaccent)}
+.totals{display:flex;gap:8px;flex-wrap:wrap}
+.totals div{padding:8px 10px;border-radius:8px;background:var(--panel2);font-size:13px}
+.totals b{font-family:var(--mono);font-size:16px;margin-left:6px}
+.scrollx{overflow-x:auto}
+@media (max-height:700px){.keypad{grid-auto-rows:46px;gap:6px}.ro-val{font-size:38px}.fv{font-size:30px}}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+</style>
+
+<div class="app">
+  <header>
+    <div class="bar">
+      <div class="brand">Block<span>·</span>Time</div>
+      <div class="clock">
+        <div class="zclock" id="zclock">----Z</div>
+        <button class="gear" id="gear" aria-label="Settings" aria-expanded="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M5.5 18.5l1.7-1.7M16.8 7.2l1.7-1.7"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="settings" id="settings" hidden>
+      <label>Local offset from Z <span class="inp" style="width:7em"><input id="sOff" inputmode="text" placeholder="off" autocomplete="off"></span></label>
+      <p>Example: −4 or +5:30. Leave blank to show Zulu only. When set, flight plan ETAs and crew rest times also show local.</p>
+    </div>
+  </header>
+
+  <main>
+    <!-- CALCULATOR -->
+    <section id="calc" class="screen" hidden>
+      <div class="tapewrap">
+        <div class="tape-head"><span class="lbl">Tape</span><button class="link" id="cClearTape">Clear tape</button></div>
+        <div class="tape" id="cTape"></div>
+      </div>
+      <div class="readout">
+        <div class="ro-op" id="cOp"></div>
+        <div class="ro-val" id="cVal">0:00</div>
+        <div class="ro-sub" id="cSub"></div>
+      </div>
+      <div class="keypad" id="cKeys"></div>
+    </section>
+
+    <!-- ELAPSED -->
+    <section id="elapsed" class="screen" hidden>
+      <div class="el-fields">
+        <button class="field active" data-f="start"><span class="lbl">From</span><span class="fv" id="eStartV"></span></button>
+        <button class="field" data-f="end"><span class="lbl">To</span><span class="fv" id="eEndV"></span></button>
+      </div>
+      <div class="el-result">
+        <span class="lbl">Elapsed</span>
+        <span class="big" id="eRes">—</span>
+        <div class="row2"><span class="sub" id="eSub">Type 4 digits for each time. It moves to the next field on its own.</span><button class="link" id="eToCalc" hidden>Send to calculator</button></div>
+      </div>
+      <div class="spacer"></div>
+      <div class="keypad" id="eKeys"></div>
+    </section>
+
+    <!-- FLIGHT PLAN -->
+    <section id="plan" class="screen" hidden>
+      <div class="summary">
+        <div class="stat"><span class="lbl">Points</span><span class="val" id="pCount">0</span></div>
+        <div class="stat total"><span class="lbl" id="pTotLbl">Total time</span><span class="val" id="pTotal">0:00</span></div>
+        <button type="button" class="stat eta" id="pEtaBtn"><span class="lbl" id="pEtaLbl">ETA</span><span class="val" id="pEta">—</span></button>
+      </div>
+      <div class="list" id="pList"></div>
+      <div class="entry" id="pEntry">
+        <div class="entry-lbl" id="pLbl"></div>
+        <div class="entry-val" id="pVal"></div>
+        <div class="entry-last" id="pLast"></div>
+      </div>
+      <div class="chips" id="pChips"></div>
+      <div class="keypad" id="pKeys"></div>
+    </section>
+
+    <!-- CREW REST -->
+    <section id="rest" class="screen scroll" hidden>
+      <div class="card">
+        <h2>Flight <span id="rExample" class="tag" hidden>Example</span></h2>
+        <div class="grid2">
+          <div class="inp"><span class="lbl">Takeoff (Z)</span><input id="rOff" inputmode="numeric" maxlength="5" autocomplete="off"><span class="hint" id="rOffH"></span></div>
+          <div class="inp"><span class="lbl">Landing (Z)</span><input id="rOn" inputmode="numeric" maxlength="5" autocomplete="off"><span class="hint" id="rOnH"></span></div>
+          <div class="inp"><span class="lbl">Rest starts (Z)</span><input id="rRs" inputmode="numeric" maxlength="5" placeholder="T/O+30" autocomplete="off"><span class="hint" id="rRsH"></span></div>
+          <div class="inp"><span class="lbl">Rest ends before LDG</span><input id="rEb" inputmode="numeric" maxlength="5" autocomplete="off"><span class="hint" id="rEbH"></span></div>
+        </div>
+        <div class="inp"><span class="lbl">Handover between breaks</span><input id="rHo" inputmode="numeric" maxlength="4" autocomplete="off" style="max-width:9em"><span class="hint" id="rHoH">Time in the seat between breaks that doesn't count as rest</span></div>
+      </div>
+
+      <div class="card">
+        <h2>Crew</h2>
+        <div class="seg" id="rCrew">
+          <button type="button" data-v="3">3 pilots</button>
+          <button type="button" data-v="4">4 pilots · 2 pairs</button>
+        </div>
+        <div class="grid2" id="rNames"></div>
+        <div class="inp"><span class="lbl">First break</span><div class="seg" id="rFirst"></div></div>
+      </div>
+
+      <div class="card">
+        <h2>Split</h2>
+        <div class="seg" id="rMode">
+          <button type="button" data-v="even">Even</button>
+          <button type="button" data-v="custom">Custom rounds</button>
+        </div>
+        <div id="rCustom" class="rounds"></div>
+        <label class="check"><input type="checkbox" id="rRound5"> Round auto breaks down to 5 min</label>
+      </div>
+
+      <div class="card">
+        <h2>Schedule</h2>
+        <div id="rOut"></div>
+      </div>
+    </section>
+  </main>
+
+  <nav role="tablist">
+    <button role="tab" data-tab="calc">Calc</button>
+    <button role="tab" data-tab="elapsed">Elapsed</button>
+    <button role="tab" data-tab="plan">Flt Plan</button>
+    <button role="tab" data-tab="rest">Crew Rest</button>
+  </nav>
+</div>
+
+<script>
+(function(){
+const $=s=>document.querySelector(s);
+const store={
+  get(k,d){try{const v=localStorage.getItem('bt:'+k);return v==null?d:JSON.parse(v)}catch(e){return d}},
+  set(k,v){try{localStorage.setItem('bt:'+k,JSON.stringify(v))}catch(e){}}
+};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ---------- time helpers ---------- */
+function digits(s){return String(s??'').replace(/\D/g,'')}
+function parseDur(s){s=digits(s);if(!s)return 0;if(s.length<=2)return +s;return (+s.slice(0,-2))*60+(+s.slice(-2))}
+function fmtDur(m){const neg=m<0;m=Math.round(Math.abs(m));return (neg?'−':'')+Math.floor(m/60)+':'+String(m%60).padStart(2,'0')}
+function parseClock(s){s=digits(s);if(s.length<3||s.length>4)return null;s=s.padStart(4,'0');const h=+s.slice(0,2),m=+s.slice(2);if(h>23||m>59)return null;return h*60+m}
+function fmtClock(m){m=((Math.round(m)%1440)+1440)%1440;return String(Math.floor(m/60)).padStart(2,'0')+String(m%60).padStart(2,'0')}
+function nowZ(){const d=new Date();return d.getUTCHours()*60+d.getUTCMinutes()}
+function dec(m){return (m/60).toFixed(2)}
+
+/* ---------- local offset ---------- */
+let OFF=null;
+function parseOffset(s){
+  s=String(s||'').trim().replace('−','-');if(!s)return null;
+  const neg=s.startsWith('-');s=s.replace(/^[+-]/,'');
+  let m;
+  if(s.includes(':')){const [h,mm]=s.split(':');m=(+h||0)*60+(+mm||0)}
+  else m=Math.round(parseFloat(s)*60);
+  if(isNaN(m)||m>14*60)return null;
+  return neg?-m:m;
+}
+function loc(z){return OFF==null?'':fmtClock(z+OFF)+'L'}
+
+/* ---------- keypad builder ---------- */
+function keypad(el,keys,onKey){
+  el.innerHTML='';
+  keys.forEach(k=>{
+    const b=document.createElement('button');
+    b.type='button';b.className='key '+(k.c||'');b.dataset.k=k.k;b.textContent=k.t??k.k;
+    if(k.cs)b.style.gridColumn='span '+k.cs;
+    if(k.rs)b.style.gridRow='span '+k.rs;
+    if(k.a)b.setAttribute('aria-label',k.a);
+    el.appendChild(b);
+  });
+  el.addEventListener('click',e=>{const b=e.target.closest('.key');if(b)onKey(b.dataset.k)});
+}
+
+/* =========================================================
+   CALCULATOR
+   ========================================================= */
+const C={acc:null,op:null,entry:'',tape:store.get('c.tape',[]),eq:false};
+const numOp=o=>o==='×'||o==='÷';
+function cApply(a,op,b){if(op==='+')return a+b;if(op==='−')return a-b;if(op==='×')return a*b;if(op==='÷')return b?a/b:a;return b}
+function cOperand(){return numOp(C.op)?parseFloat(C.entry):parseDur(C.entry)}
+function cOperandText(){return numOp(C.op)?C.entry:fmtDur(parseDur(C.entry))}
+function cPush(line){C.tape.push(line);if(C.tape.length>300)C.tape.splice(0,C.tape.length-300);store.set('c.tape',C.tape)}
+function cFold(){
+  if(!C.entry)return;
+  if(C.acc===null){C.acc=parseDur(C.entry);cPush({o:'',t:fmtDur(C.acc)})}
+  else{const v=cOperand();cPush({o:C.op,t:cOperandText()});C.acc=cApply(C.acc,C.op,v)}
+  C.entry='';
+}
+function cKey(k){
+  if(/^\d+$/.test(k)){
+    if(C.eq){C.acc=null;C.op=null;C.eq=false;if(C.tape.length)cPush({sep:1})}
+    if(C.entry.length+k.length<=6)C.entry+=k;
+  }else if(k==='back'){C.entry=C.entry.slice(0,-1)}
+  else if(k==='C'){
+    if(C.entry)C.entry='';
+    else{if(C.acc!==null&&!C.eq)cPush({sep:1});C.acc=null;C.op=null;C.eq=false}
+  }else if('+−×÷'.includes(k)){
+    if(C.acc===null&&!C.entry)return;
+    cFold();C.op=k;C.eq=false;
+  }else if(k==='='){
+    if(C.acc===null&&!C.entry)return;
+    if(C.acc===null){cFold()}else if(C.entry){cFold()}
+    cPush({o:'=',t:fmtDur(C.acc),tot:1,d:dec(C.acc)});
+    C.op=null;C.eq=true;
+  }
+  cRender();
+}
+function cRender(){
+  const t=$('#cTape');
+  if(!C.tape.length){t.innerHTML='<div class="empty">Type times as digits: 130 is 1:30, 45 is 0:45. Use × and ÷ with plain numbers, like ÷ 3 to split rest.</div>'}
+  else t.innerHTML=C.tape.map(l=>l.sep?'<div style="height:10px"></div>':
+    `<div class="ln${l.tot?' tot':''}"><span class="o">${esc(l.o||'')}</span><span>${l.tot?`<span class="d">${l.d} h&nbsp;&nbsp;</span>`:''}${esc(l.t)}</span></div>`).join('');
+  t.scrollTop=t.scrollHeight;
+  $('#cOp').textContent=C.op||(C.eq?'=':'');
+  let v,sub='';
+  if(C.entry){
+    v=C.acc!==null&&numOp(C.op)?C.entry:fmtDur(parseDur(C.entry));
+    if(C.acc!==null&&C.op){const r=cApply(C.acc,C.op,cOperand());sub=`${fmtDur(C.acc)} ${C.op} ${cOperandText()} = ${fmtDur(r)}`}
+  }else{v=fmtDur(C.acc??0);sub=C.acc!==null?`${dec(C.acc)} hours`:''}
+  $('#cVal').textContent=v;$('#cSub').textContent=sub;
+}
+keypad($('#cKeys'),[
+  {k:'C',c:'fn'},{k:'back',t:'⌫',c:'fn',a:'Delete'},{k:'÷',c:'op'},{k:'×',c:'op'},
+  {k:'7'},{k:'8'},{k:'9'},{k:'−',c:'op',a:'Minus'},
+  {k:'4'},{k:'5'},{k:'6'},{k:'+',c:'op'},
+  {k:'1'},{k:'2'},{k:'3'},{k:'=',c:'go',rs:2},
+  {k:'0',cs:2},{k:'00'}
+],cKey);
+$('#cClearTape').onclick=()=>{C.tape=[];store.set('c.tape',[]);cRender()};
+
+/* =========================================================
+   ELAPSED
+   ========================================================= */
+const E={start:'',end:'',f:'start',fresh:false};
+function eKey(k){
+  if(/^\d$/.test(k)){
+    if(E.fresh){E[E.f]='';E.fresh=false}
+    if(E[E.f].length>=4){E[E.f]=''}
+    E[E.f]+=k;
+    if(E[E.f].length===4&&E.f==='start'){E.f='end';E.fresh=true}
+  }else if(k==='back'){E[E.f]=E[E.f].slice(0,-1);E.fresh=false}
+  else if(k==='now'){E[E.f]=fmtClock(nowZ());if(E.f==='start'){E.f='end';E.fresh=true}}
+  else if(k==='clr'){E.start='';E.end='';E.f='start';E.fresh=false}
+  eRender();
+}
+function eShow(v){const p='----';return `${esc(v)}<span class="ph">${p.slice(v.length)}</span><span class="z">Z</span>`}
+let eMin=null;
+function eRender(){
+  $('#eStartV').innerHTML=eShow(E.start);$('#eEndV').innerHTML=eShow(E.end);
+  document.querySelectorAll('.field').forEach(b=>b.classList.toggle('active',b.dataset.f===E.f));
+  const a=E.start.length===4?parseClock(E.start):null,b=E.end.length===4?parseClock(E.end):null;
+  eMin=null;
+  if(E.start.length===4&&a===null){$('#eRes').textContent='—';$('#eSub').textContent='From time isn’t a valid HHMM.'}
+  else if(E.end.length===4&&b===null){$('#eRes').textContent='—';$('#eSub').textContent='To time isn’t a valid HHMM.'}
+  else if(a!==null&&b!==null){
+    let d=b-a;const roll=d<0;if(roll)d+=1440;eMin=d;
+    $('#eRes').textContent=fmtDur(d);
+    let s=`${dec(d)} hours`;if(roll)s+=' · crosses 0000Z';
+    if(OFF!=null)s+=` · ${loc(a)}–${loc(b)}`;
+    $('#eSub').textContent=s;
+  }else{$('#eRes').textContent='—';$('#eSub').textContent='Type 4 digits for each time. It moves to the next field on its own.'}
+  $('#eToCalc').hidden=eMin===null;
+}
+document.querySelectorAll('.field').forEach(b=>b.onclick=()=>{E.f=b.dataset.f;E.fresh=true;eRender()});
+$('#eToCalc').onclick=()=>{
+  if(eMin===null)return;
+  if(C.eq){C.acc=null;C.op=null;C.eq=false;if(C.tape.length)cPush({sep:1})}
+  const h=Math.floor(eMin/60),m=eMin%60;C.entry=String(h)+String(m).padStart(2,'0');
+  if(C.acc!==null&&!C.op)C.op='+';
+  cRender();showTab('calc');
+};
+keypad($('#eKeys'),[
+  {k:'7'},{k:'8'},{k:'9'},{k:'back',t:'⌫',c:'fn',a:'Delete'},
+  {k:'4'},{k:'5'},{k:'6'},{k:'now',t:'Now',c:'fn'},
+  {k:'1'},{k:'2'},{k:'3'},{k:'clr',t:'Clear',c:'fn',rs:2},
+  {k:'0',cs:3}
+],eKey);
+
+/* =========================================================
+   FLIGHT PLAN
+   ========================================================= */
+const P={legs:store.get('p.legs',null),dep:store.get('p.dep',''),mode:store.get('p.mode',2),sel:null,entry:'',target:'leg',last:'',example:false,confirm:false};
+if(P.legs===null){P.legs=[14,23,41,58,62,55,49,37,18,9];P.dep='0215';P.example=true}
+const MODES=[2,3,'enter'];
+const modeMax=()=>P.mode===2?2:P.mode===3?3:5;
+function pSave(){if(P.example)return;store.set('p.legs',P.legs);store.set('p.dep',P.dep)}
+function pClear(){P.legs=[];P.dep='';P.sel=null;P.entry='';P.target='dep';P.example=false;P.last='';pSave()}
+function pCommit(){
+  if(P.target==='dep'){
+    const c=parseClock(P.entry);P.entry='';
+    if(c===null){P.last='Start time must be HHMM, like 0215';return}
+    P.dep=fmtClock(c);P.target='leg';P.last=`Start ${P.dep}Z · ETAs updated`;pSave();return;
+  }
+  const v=parseDur(P.entry);P.entry='';
+  if(P.sel!==null){
+    const i=P.sel;P.legs[i]=v;P.last=`WPT ${i+1} changed to ${fmtDur(v)}`;
+    P.sel=i+1<P.legs.length?i+1:null;
+  }else{
+    P.legs.push(v);
+    const tot=P.legs.reduce((s,x)=>s+x,0);
+    P.last=`WPT ${P.legs.length} +${fmtDur(v)} → ${fmtDur(tot)}`;
+  }
+  pSave();
+}
+function pKey(k){
+  P.confirm=false;
+  if(k==='back'){P.entry=P.entry.slice(0,-1)}
+  else if(k==='undo'){
+    if(P.entry)P.entry='';
+    else if(P.target==='dep')P.target='leg';
+    else if(P.sel!==null)P.sel=null;
+    else if(P.legs.length&&!P.example){const v=P.legs.pop();P.last=`Removed WPT ${P.legs.length+1} (${fmtDur(v)})`;pSave()}
+  }else if(k==='enter'){
+    if(P.entry)pCommit();
+    else if(P.target==='dep')P.target='leg';
+    else if(P.sel!==null)P.sel=P.sel+1<P.legs.length?P.sel+1:null;
+  }else if(k==='off'){
+    P.target=P.target==='dep'?'leg':'dep';P.entry='';P.sel=null;
+    if(P.example&&P.target==='dep')pClear(),P.target='dep';
+  }else if(/^\d$/.test(k)){
+    if(P.example){pClear();P.target='leg'}
+    P.entry+=k;
+    if(P.target==='dep'){if(P.entry.length>=4)pCommit()}
+    else if(P.mode!=='enter'&&P.entry.length>=modeMax())pCommit();
+    else if(P.entry.length>5)P.entry=P.entry.slice(0,5);
+  }
+  pRender(k);
+}
+function pRender(k){
+  const n=P.legs.length,dep=P.dep?parseClock(P.dep):null;
+  let cum=0,rows='';
+  const hasLoc=OFF!=null&&dep!=null;
+  const noEta=dep==null;
+  const rc=noEta?' noeta':(hasLoc?' loc':'');
+  P.legs.forEach((l,i)=>{
+    cum+=l;
+    const cls=i===P.sel?' sel':(P.sel===null&&i===n-1?' cur':'');
+    rows+=`<button type="button" class="row${rc}${cls}" data-i="${i}"><span>${i+1}</span><span class="l">${fmtDur(l)}</span><span class="t">${fmtDur(cum)}</span>${noEta?'':`<span>${fmtClock(dep+cum)}Z</span>`}${hasLoc?`<span class="l">${loc(dep+cum)}</span>`:''}</button>`;
+  });
+  const list=$('#pList');
+  list.innerHTML=n?`<div class="row head${rc}"><span>Wpt</span><span>Leg</span><span>Total</span>${noEta?'':'<span>ETA</span>'}${hasLoc?'<span>Local</span>':''}</div>`+rows
+    :'<div class="empty">Type each leg time from the nav log. In 2-digit mode, 08 is 8 minutes and it advances to the next point on its own. Set the <b>Start</b> time first (top right, or the Start key) and every point gets an ETA.</div>';
+  $('#pCount').textContent=n;
+  $('#pTotal').innerHTML=fmtDur(cum)+(P.example?'<span class="tag">Example</span>':'');
+  const eb=$('#pEtaBtn');eb.classList.toggle('unset',dep==null);eb.classList.toggle('active',P.target==='dep');
+  $('#pEtaLbl').textContent=dep!=null?`ETA · start ${P.dep}Z`:'Start time';
+  $('#pEta').textContent=dep==null?'Set':(n?fmtClock(dep+cum)+'Z':P.dep+'Z');
+
+  const entry=$('#pEntry');entry.classList.toggle('dep',P.target==='dep');
+  let lbl,ph;
+  if(P.target==='dep'){lbl='Start time (Z) · 4 digits';ph='----'}
+  else if(P.sel!==null){lbl=`Editing WPT ${P.sel+1} · was ${fmtDur(P.legs[P.sel])}`;ph=P.mode==='enter'?'—':'_'.repeat(modeMax())}
+  else{lbl=`WPT ${n+1} · leg time`;ph=P.mode==='enter'?'—':'_'.repeat(modeMax())}
+  $('#pLbl').textContent=lbl;
+  const shown=P.entry?`${esc(P.entry)}<span class="ph">${P.mode==='enter'||P.target==='dep'&&false?'':ph.slice(P.entry.length)}</span>`:`<span class="ph">${ph}</span>`;
+  $('#pVal').innerHTML=shown;
+  $('#pLast').textContent=P.entry&&P.target==='leg'?`= ${fmtDur(parseDur(P.entry))}`:(P.last||(P.example?'Sample plan. Start typing to replace it.':''));
+
+  const chips=[];
+  const mlabel=P.mode===2?'2 digits · MM':P.mode===3?'3 digits · HMM':'Manual · Enter';
+  chips.push(`<button type="button" class="chip" data-c="mode">Advance <b>${mlabel}</b></button>`);
+  if(P.sel!==null){
+    chips.push(`<button type="button" class="chip act" data-c="ins">Insert point above ${P.sel+1}</button>`);
+    chips.push(`<button type="button" class="chip warn" data-c="del">Delete WPT ${P.sel+1}</button>`);
+    chips.push(`<button type="button" class="chip" data-c="done">Done editing</button>`);
+  }else if(n){
+    chips.push(`<button type="button" class="chip${P.confirm?' warn':''}" data-c="new">${P.confirm?`Tap again to clear ${n} points`:'New plan'}</button>`);
+  }
+  $('#pChips').innerHTML=chips.join('');
+
+  if(k==='scroll-sel'||P.sel!==null){const r=list.querySelector('.row.sel');if(r)r.scrollIntoView({block:'nearest'})}
+  else if(/^\d$|enter|undo/.test(k||'')||k==='init')list.scrollTop=list.scrollHeight;
+}
+$('#pEtaBtn').onclick=()=>pKey('off');
+$('#pList').addEventListener('click',e=>{
+  const r=e.target.closest('.row[data-i]');if(!r)return;
+  const i=+r.dataset.i;
+  if(P.example)return;
+  P.sel=P.sel===i?null:i;P.target='leg';P.entry='';P.confirm=false;pRender('scroll-sel');
+});
+let confirmT;
+$('#pChips').addEventListener('click',e=>{
+  const c=e.target.closest('.chip');if(!c)return;
+  const a=c.dataset.c;
+  if(a==='mode'){P.mode=MODES[(MODES.indexOf(P.mode)+1)%3];P.entry='';store.set('p.mode',P.mode)}
+  else if(a==='ins'){P.legs.splice(P.sel,0,0);P.last=`Inserted a point at ${P.sel+1}. Type its leg time.`;pSave()}
+  else if(a==='del'){const v=P.legs.splice(P.sel,1)[0];P.last=`Deleted WPT ${P.sel+1} (${fmtDur(v)})`;if(P.sel>=P.legs.length)P.sel=null;pSave()}
+  else if(a==='done'){P.sel=null}
+  else if(a==='new'){
+    if(P.confirm||P.example){pClear();P.confirm=false}
+    else{P.confirm=true;clearTimeout(confirmT);confirmT=setTimeout(()=>{P.confirm=false;pRender()},3000)}
+  }
+  if(a!=='new')P.confirm=false;
+  pRender(a==='new'?'init':'scroll-sel');
+});
+keypad($('#pKeys'),[
+  {k:'7'},{k:'8'},{k:'9'},{k:'back',t:'⌫',c:'fn',a:'Delete digit'},
+  {k:'4'},{k:'5'},{k:'6'},{k:'undo',t:'Undo',c:'fn'},
+  {k:'1'},{k:'2'},{k:'3'},{k:'enter',t:'Enter',c:'go',rs:2},
+  {k:'0',cs:2},{k:'off',t:'Start',c:'fn',a:'Set start time'}
+],pKey);
+
+/* =========================================================
+   CREW REST
+   ========================================================= */
+const savedR=store.get('r',null);
+const R=Object.assign({off:'0215',on:'2000',rs:'',eb:'100',ho:'0',crew:4,names3:['Capt','FO','RFO'],names4:['Pair A','Pair B'],first:0,mode:'custom',rounds:['300',''],round5:true},savedR||{});
+if(R.on==null&&R.ete!=null){const o=parseClock(R.off);R.on=o!=null?fmtClock(o+parseDur(R.ete)):'';R.rs=o!=null?fmtClock(o+parseDur(R.sb)):''}
+delete R.ete;delete R.sb;
+const DEFAULT_SB=30;
+/* minutes after takeoff that a Z clock time falls; null if unparseable */
+function relToOff(z,off){const c=parseClock(z);return c==null?null:(c-off+1440)%1440}
+let rExample=!savedR;
+const GCOL=['var(--cyan)','var(--magenta)','var(--sand)'];
+function rSave(){rExample=false;store.set('r',R);$('#rExample').hidden=true}
+function names(){return R.crew===4?R.names4:R.names3}
+function G(){return R.crew===4?2:3}
+
+function rCompute(){
+  const off=parseClock(R.off);
+  if(off===null)return{err:'Enter the takeoff time as HHMM Z.'};
+  const ete=relToOff(R.on,off);
+  if(!ete)return{err:'Enter the landing time as HHMM Z.'};
+  let sb=DEFAULT_SB;
+  if(digits(R.rs)){const s=relToOff(R.rs,off);if(s==null)return{err:'Rest start must be HHMM Z.'};if(s>=ete)return{err:'Rest start is after landing. Check the times.'};sb=s}
+  const eb=parseDur(R.eb),ho=parseDur(R.ho),g=G();
+  const W=ete-sb-eb;
+  if(W<=0)return{err:'Rest would start after it has to end. Check the rest start and landing buffer.'};
+  const rounds=R.mode==='even'?['']:(R.rounds.length?R.rounds:['']);
+  const N=rounds.length*g,avail=W-ho*(N-1);
+  const fixed=rounds.map(r=>digits(r)===''?null:parseDur(r));
+  const fixedSum=fixed.reduce((s,v)=>s+(v??0),0)*g;
+  const autoN=fixed.filter(v=>v===null).length;
+  let autoEach=null;
+  if(autoN){
+    const raw=(avail-fixedSum)/(autoN*g);
+    autoEach=R.round5?Math.floor(raw/5)*5:Math.floor(raw);
+    if(autoEach<=0)return{err:`The fixed rounds use ${fmtDur(fixedSum+ho*(N-1))} of a ${fmtDur(W)} rest window, leaving nothing for the auto round. Shorten a round or remove the auto round.`,fixed,autoEach:null};
+  }
+  const order=[...Array(g).keys()].map(i=>(i+R.first)%g);
+  const breaks=[];let t=off+sb;
+  rounds.forEach((r,ri)=>{const len=fixed[ri]??autoEach;order.forEach(gi=>{breaks.push({g:gi,round:ri,start:t,end:t+len,len});t+=len+ho})});
+  const endRest=breaks.length?breaks[breaks.length-1].end:off+sb;
+  const latest=off+ete-eb;
+  const totals=[...Array(g)].map((_,i)=>breaks.filter(b=>b.g===i).reduce((s,b)=>s+b.len,0));
+  return{off,ete,sb,eb,W,breaks,endRest,latest,diff:latest-endRest,totals,autoEach,fixed,on:off+ete};
+}
+
+function rBuildNames(){
+  const n=names(),box=$('#rNames');
+  box.innerHTML=n.map((x,i)=>`<div class="inp"><span class="lbl"><span class="dot" style="background:${GCOL[i]}"></span>${R.crew===4?'Pair':'Pilot'} ${i+1}</span><input class="name" id="rName${i}" data-i="${i}" value="${esc(x)}" autocomplete="off"></div>`).join('');
+  box.querySelectorAll('input').forEach(inp=>inp.oninput=()=>{names()[+inp.dataset.i]=inp.value||`${R.crew===4?'Pair':'Pilot'} ${+inp.dataset.i+1}`;rSave();rBuildFirst(true);rRender()});
+  rBuildFirst();
+}
+function rBuildFirst(keep){
+  if(R.first>=G())R.first=0;
+  $('#rFirst').innerHTML=names().map((x,i)=>`<button type="button" data-v="${i}" aria-pressed="${i===R.first}">${esc(x)}</button>`).join('');
+}
+$('#rFirst').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;R.first=+b.dataset.v;rSave();rBuildFirst();rRender()});
+
+function rBuildRounds(){
+  const box=$('#rCustom');
+  box.hidden=R.mode!=='custom';
+  if(R.mode!=='custom'){box.innerHTML='';return}
+  box.innerHTML=R.rounds.map((r,i)=>`<div class="round"><span class="rl">Round ${i+1}</span><input id="rRound${i}" data-i="${i}" inputmode="numeric" maxlength="5" placeholder="auto" value="${esc(r)}" autocomplete="off"><span class="rn" id="rRn${i}"></span><button type="button" class="x" data-x="${i}" aria-label="Remove round ${i+1}" ${R.rounds.length<2?'disabled style="opacity:.35"':''}>×</button></div>`).join('')
+    +`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><button type="button" class="link" id="rAdd">+ Add round</button><span class="hint lbl" style="text-transform:none;letter-spacing:0;font-size:12px">Leave a round blank to split what's left</span></div>`;
+  box.querySelectorAll('input').forEach(inp=>{
+    inp.oninput=()=>{R.rounds[+inp.dataset.i]=digits(inp.value);rSave();rRender()};
+    inp.onblur=()=>{const v=digits(inp.value);inp.value=v?fmtDur(parseDur(v)):''};
+    if(digits(inp.value))inp.value=fmtDur(parseDur(inp.value));
+  });
+  box.querySelectorAll('.x').forEach(b=>b.onclick=()=>{if(R.rounds.length<2)return;R.rounds.splice(+b.dataset.x,1);rSave();rBuildRounds();rRender()});
+  $('#rAdd').onclick=()=>{R.rounds.push('');rSave();rBuildRounds();rRender()};
+}
+
+function setSeg(sel,v){document.querySelectorAll(sel+' button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.v===String(v))))}
+$('#rCrew').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;R.crew=+b.dataset.v;setSeg('#rCrew',R.crew);rSave();rBuildNames();rRender()});
+$('#rMode').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;R.mode=b.dataset.v;setSeg('#rMode',R.mode);rSave();rBuildRounds();rRender()});
+$('#rRound5').onchange=e=>{R.round5=e.target.checked;rSave();rRender()};
+
+const fields=[['rOff','off','clock'],['rOn','on','clock'],['rRs','rs','clock'],['rEb','eb','dur'],['rHo','ho','dur']];
+fields.forEach(([id,key,kind])=>{
+  const inp=$('#'+id);
+  inp.value=kind==='clock'?R[key]:(digits(R[key])?fmtDur(parseDur(R[key])):'0:00');
+  inp.oninput=()=>{R[key]=digits(inp.value);rSave();rRender()};
+  inp.onfocus=()=>{inp.select()};
+  inp.onblur=()=>{if(kind==='dur')inp.value=fmtDur(parseDur(R[key]));else{const c=parseClock(R[key]);if(c!==null)inp.value=fmtClock(c)}};
+});
+
+function rRender(){
+  const r=rCompute();
+  // field hints
+  const off=parseClock(R.off),ete=off!==null?relToOff(R.on,off):null;
+  const L=z=>OFF!=null?' · '+loc(z):'';
+  $('#rOffH').textContent=off!==null?(OFF!=null?loc(off):''):(digits(R.off)?'Use HHMM':'');
+  $('#rOnH').textContent=off!==null&&ete?`Flight time ${fmtDur(ete)}${L(off+ete)}`:(digits(R.on)&&parseClock(R.on)==null?'Use HHMM':'');
+  const rsRel=off!==null&&digits(R.rs)?relToOff(R.rs,off):null;
+  $('#rRsH').textContent=off===null?'':(digits(R.rs)?(rsRel!=null?`T/O +${fmtDur(rsRel)}${L(off+rsRel)}`:'Use HHMM'):`Blank uses ${fmtClock(off+DEFAULT_SB)}Z (T/O +0:30)`);
+  $('#rEbH').textContent=off!==null&&ete?`Rest closes ${fmtClock(off+ete-parseDur(R.eb))}Z`:'';
+  // round notes
+  if(R.mode==='custom')R.rounds.forEach((x,i)=>{const el=$('#rRn'+i);if(!el)return;
+    el.textContent=digits(x)?'each':(r.autoEach!=null?`auto · ${fmtDur(r.autoEach)} each`:'auto')});
+  const out=$('#rOut');
+  if(r.err){out.innerHTML=`<div class="status err">${esc(r.err)}</div>`;return}
+  const nm=names();
+  let status;
+  const onLeft=r.on-r.endRest;
+  if(r.diff===0)status=`<div class="status">Rest window ${fmtDur(r.W)}, ${fmtClock(r.off+r.sb)}Z to ${fmtClock(r.latest)}Z. Breaks fill it exactly.</div>`;
+  else if(r.diff>0)status=`<div class="status">Rest window ${fmtDur(r.W)}, ${fmtClock(r.off+r.sb)}Z to ${fmtClock(r.latest)}Z. Last break ends ${fmtClock(r.endRest)}Z, leaving <b>${fmtDur(r.diff)}</b> unassigned before rest closes.</div>`;
+  else status=`<div class="status warn"><b>Over by ${fmtDur(-r.diff)}.</b> Last break ends ${fmtClock(r.endRest)}Z, ${onLeft>0?fmtDur(onLeft)+' before landing':'after landing'}. Rest was planned to close at ${fmtClock(r.latest)}Z.</div>`;
+  // timeline
+  const pct=m=>(m/r.ete*100).toFixed(3)+'%';
+  const nowRel=(nowZ()-r.off+1440)%1440;
+  let tl=`<div class="seg-b" style="left:0;width:${pct(r.sb)}"></div><div class="seg-b" style="left:${pct(r.ete-r.eb)};width:${pct(r.eb)}"></div>`;
+  r.breaks.forEach(b=>{const s=b.start-r.off;if(s>=r.ete)return;const w=Math.min(b.len,r.ete-s);
+    tl+=`<div class="br" style="left:${pct(s)};width:calc(${pct(w)} - 2px);background:${GCOL[b.g]}">${w/r.ete>.09?fmtDur(b.len):''}</div>`});
+  if(nowRel<r.ete)tl+=`<div class="nowline" style="left:${pct(nowRel)}" title="Now"></div>`;
+  const hasLoc=OFF!=null;
+  const rows=r.breaks.map((b,i)=>{
+    const s=b.start-r.off,e=b.end-r.off,isNow=nowRel>=s&&nowRel<e&&nowRel<r.ete;
+    return `<tr class="${isNow?'now':''}"><td class="who"><span class="dot" style="background:${GCOL[b.g]}"></span>${esc(nm[b.g])}${isNow?'<span class="pill">NOW</span>':''}</td><td>${fmtClock(b.start)}Z</td><td>${fmtClock(b.end)}Z</td><td>${fmtDur(b.len)}</td>${hasLoc?`<td style="color:var(--muted)">${loc(b.start)}–${loc(b.end)}</td>`:''}</tr>`}).join('');
+  const totals=r.totals.map((t,i)=>`<div><span class="dot" style="background:${GCOL[i]}"></span>${esc(nm[i])}<b>${fmtDur(t)}</b></div>`).join('');
+  out.innerHTML=`${status}
+    <div style="margin-top:12px"><div class="tl">${tl}</div><div class="tl-lbls"><span>T/O ${fmtClock(r.off)}Z</span><span>LDG ${fmtClock(r.on)}Z</span></div></div>
+    <div class="scrollx" style="margin-top:10px"><table class="sched"><thead><tr><th>Break</th><th>Start</th><th>End</th><th>Length</th>${hasLoc?'<th>Local</th>':''}</tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="totals" style="margin-top:12px">${totals}</div>`;
+}
+function rInit(){
+  setSeg('#rCrew',R.crew);setSeg('#rMode',R.mode);$('#rRound5').checked=R.round5;
+  $('#rExample').hidden=!rExample;
+  rBuildNames();rBuildRounds();rRender();
+}
+
+/* =========================================================
+   SHELL: tabs, clock, settings, keyboard
+   ========================================================= */
+let tab=store.get('tab','plan');
+function showTab(t){
+  tab=t;store.set('tab',t);
+  document.querySelectorAll('main .screen').forEach(s=>s.hidden=s.id!==t);
+  document.querySelectorAll('nav button').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.tab===t)));
+  if(t==='plan')pRender('init');
+  if(t==='rest')rRender();
+}
+document.querySelector('nav').addEventListener('click',e=>{const b=e.target.closest('button');if(b)showTab(b.dataset.tab)});
+
+function tick(){
+  const d=new Date();
+  const z=fmtClock(d.getUTCHours()*60+d.getUTCMinutes());
+  $('#zclock').innerHTML=`${z}Z${OFF!=null?`<small>${loc(nowZ())}</small>`:''}`;
+}
+setInterval(()=>{tick();if(tab==='rest'&&!document.activeElement.matches('input'))rRender()},20000);
+
+$('#gear').onclick=()=>{const s=$('#settings');s.hidden=!s.hidden;$('#gear').setAttribute('aria-expanded',String(!s.hidden))};
+const sOff=$('#sOff');
+sOff.value=store.get('off','');OFF=parseOffset(sOff.value);
+sOff.oninput=()=>{store.set('off',sOff.value);OFF=parseOffset(sOff.value);tick();eRender();pRender();rRender()};
+
+document.addEventListener('keydown',e=>{
+  if(e.target.matches('input')||e.metaKey||e.ctrlKey)return;
+  const k=e.key;
+  const map={Backspace:'back'};
+  if(tab==='calc'){
+    const m={...map,'+':'+','-':'−','*':'×','x':'×','/':'÷','=':'=',Enter:'=',Escape:'C'};
+    if(/^\d$/.test(k))cKey(k);else if(m[k])cKey(m[k]);else return;
+  }else if(tab==='plan'){
+    const m={...map,Enter:'enter',Escape:'undo'};
+    if(/^\d$/.test(k))pKey(k);else if(m[k])pKey(m[k]);else return;
+  }else if(tab==='elapsed'){
+    const m={...map,Escape:'clr'};
+    if(/^\d$/.test(k))eKey(k);else if(m[k])eKey(m[k]);else return;
+  }else return;
+  e.preventDefault();
+});
+
+tick();cRender();eRender();rInit();showTab(tab);
+})();
+</script>
