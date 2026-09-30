@@ -1442,7 +1442,11 @@ function tCurrency(){
   const parts=[head];
   if(r.lastAc)parts.push('Last aircraft landing '+pretty(r.lastAc.d)
     +(r.lastAc.rt?' · '+esc(r.lastAc.rt):''));
-  if(r.last3.length===3)parts.push('Third most recent ages out '+pretty(dayAdd(r.last3[2].d,90)));
+  /* +89, not +90: the 90-day window is the current day plus the 89 before it, so a
+     landing still counts on day 89. The company shows that last valid day and calls
+     it the expiry date — match both the number and the word. */
+  if(r.last3.length===3)parts.push('Expires '+pretty(dayAdd(r.last3[2].d,89))
+    +' — on the third most recent landing');
   el.className=r.in90>=3?'status':'status warn';
   const src=r.through
     ? 'Logbook history to '+pretty(r.through)+(r.mine?' plus '+r.mine+' logged here':'')
