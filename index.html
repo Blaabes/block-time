@@ -372,8 +372,15 @@ nav button[aria-selected="true"]{color:var(--fg);border-top-color:var(--cyan)}
           notes made here both survive. Use a folder of its own &mdash; the one holding your crew
           notes, not your notes in general: files here get written back in this app&rsquo;s format. As a
           safety net, any file without <b>tags: [crew]</b> in its frontmatter is ignored rather than
-          rewritten. If it fails with a network error the server needs to allow this site
-          (on Nextcloud: the WebAppPassword app).</p>
+          rewritten.</p>
+          <p><b>&ldquo;Could not reach it at all&rdquo;</b> is almost always CORS, and an app password does
+          not help with it &mdash; two different things with confusingly similar names. The password is
+          your credential; CORS is your server deciding whether a web page from somewhere else may talk
+          to it at all, which it settles before any password is looked at. A wrong password gives a
+          clean <i>401</i> instead. Fix it on the server: on Nextcloud install the <b>WebAppPassword</b>
+          app (an add-on that sends CORS headers &mdash; it does not manage passwords) and allow this
+          site&rsquo;s address, or add the headers in your reverse proxy. A login gateway in front, such
+          as Cloudflare Access, blocks it identically and no CORS setting will help.</p>
         </div>
       </details>
     </div>
