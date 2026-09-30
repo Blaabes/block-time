@@ -231,7 +231,7 @@ nav button[aria-selected="true"]{color:var(--fg);border-top-color:var(--cyan)}
 /* summary boxes on the Flights view: a heading, then labelled figures in a row */
 .sumh{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
 .stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px 8px}
-.stats.three{grid-template-columns:repeat(3,minmax(0,1fr))}
+.stats.two{grid-template-columns:repeat(2,minmax(0,1fr))}
 .stats>div{min-width:0}
 .stats .k{font-size:11px;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .stats .v{font-family:var(--mono);font-size:18px;font-weight:600;white-space:nowrap}
@@ -1471,9 +1471,9 @@ function tCurrency(){
      landing still counts on day 89. The company shows that last valid day and calls
      it the expiry date — match both the number and the word. */
   const cell=(k,v)=>'<div><div class="k">'+k+'</div><div class="v">'+v+'</div></div>';
-  /* No 90-day count: Jake — "I'll either be current or I won't be flying". What
-     matters is when it runs out and how many landings renew it. */
-  const cells=[cell('In sim',String(r.simIn90)),
+  /* No 90-day or sim counts: Jake — "I'll either be current or I won't be flying".
+     What matters is when it runs out and how many landings renew it. */
+  const cells=[
     cell('Expires',r.expires?'<b>'+pretty(r.expires)+'</b>'
       +(r.daysLeft==null?'':'<small>'+(r.daysLeft<0?'expired':r.daysLeft===0?'today'
         :r.daysLeft+' day'+(r.daysLeft===1?'':'s'))+'</small>'):'&mdash;'),
@@ -1485,9 +1485,11 @@ function tCurrency(){
   const src=r.through
     ? 'Logbook to '+pretty(r.through)+(r.mine?' plus '+r.mine+' logged here':'')
     : 'From flights entered here only — import flights.json for your history';
-  el.innerHTML='<div class="sumh">Landings</div><div class="stats three">'+cells.join('')+'</div>'
+  el.innerHTML='<div class="sumh">Landings</div><div class="stats two">'+cells.join('')+'</div>'
     +(r.lastAc?'<div class="sumline">Last aircraft landing '+pretty(r.lastAc.d)
       +(r.lastAc.rt?' &middot; '+esc(r.lastAc.rt):'')+'</div>':'')
+    /* Only when every landing in the window came from the box — worth knowing on an
+       augmented long-haul roster (Jake: "the note about the sim is super nice"). */
     +(r.simIn90&&r.simIn90===r.in90&&r.lastSim?'<div class="sumline">All in the sim &middot; last '
       +pretty(r.lastSim.d)+'</div>':'')
     +'<div class="sumsrc">'+src+'</div>';
