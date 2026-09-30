@@ -301,7 +301,10 @@ nav button[aria-selected="true"]{color:var(--fg);border-top-color:var(--cyan)}
 .trow .who{grid-column:1/-1;font-size:12px;color:var(--muted);overflow-wrap:anywhere}
 .crewrow{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)}
 .crewrow:last-child{border-bottom:0}
-.crewrow .nm2{flex:1;min-width:0;overflow-wrap:anywhere}
+.crewrow .nm2{flex:1;min-width:0;overflow-wrap:anywhere;text-align:left;font:inherit;
+  padding:4px 0;text-decoration:underline;text-decoration-color:var(--line);
+  text-underline-offset:3px}
+.crewrow .nm2:active{color:var(--cyan)}
 .rolechip{flex:none;font-family:var(--mono);font-size:12px;letter-spacing:.06em;border:1px solid var(--cyan);
   color:var(--cyan);border-radius:999px;padding:4px 10px;min-width:4.2em;text-align:center}
 .crewrow .rm{flex:none;color:var(--amber);border:1px solid var(--line);border-radius:8px;width:32px;height:32px}
@@ -1168,6 +1171,9 @@ const ADDABLE=SECORDER.filter(t=>t!=='Flights together');
 
 let cwEd=null;   // {si, ii} — ii null means "new item in section si"
 let cwHdr=false; // editing name / role / logbook name
+/* A card opened from a flight goes back to that flight, not to the crew list —
+   otherwise you lose your place in the flight you were filling in. */
+let cwFrom=null;
 
 const person=()=>PEOPLE.find(x=>x.id===cwOpen);
 function cwSave(p){p.updated=new Date().toISOString();davSoon();return dbPut('people',p).catch(()=>{})}
@@ -1182,6 +1188,7 @@ function cwShow(id){
     (p.flights_together?p.flights_together+' flight'+(p.flights_together===1?'':'s')+' together':''),
     (p.last_flown?'last '+p.last_flown:'')].filter(Boolean).join(' · ');
   $('#cwEditHdr').textContent=cwHdr?'Done':'Edit';
+  $('#cwBack').innerHTML=cwFrom?'&#8592; Flight':'&#8592; Crew';
 
   const out=[];
   if(cwHdr){
@@ -1321,7 +1328,11 @@ async function delPerson(){
   PEOPLE=PEOPLE.filter(x=>x.id!==p.id);
   cwHdr=false;cwEd=null;cwHide();
 }
-function cwHide(){cwOpen=null;cwEd=null;cwHdr=false;setMode(cwMode)}
+function cwHide(){
+  cwOpen=null;cwEd=null;cwHdr=false;
+  if(cwFrom){const t=cwFrom;cwFrom=null;tOpen=t;tShow();return}
+  setMode(cwMode);
+}
 function cwAddNote(){
   const inp=$('#cwNote'),txt=inp.value.trim();if(!txt)return;
   const p=person();if(!p)return;
@@ -1470,7 +1481,8 @@ function tShow(id){
   $('#tdTitle').textContent=(t.frm&&t.to)?t.frm+'–'+t.to:'New flight';
   $('#tdSub').textContent=t.date||'';
   const rows=(t.crew||[]).map((c,i)=>
-    '<div class="crewrow"><span class="nm2">'+esc(nameOf(c.pid))+'</span>'
+    '<div class="crewrow"><button type="button" class="nm2" data-pid="'+esc(c.pid)+'">'
+    +esc(nameOf(c.pid))+'</button>'
     +'<button type="button" class="rolechip" data-ri="'+i+'">'+esc(c.role)+'</button>'
     +'<button type="button" class="rm" data-rm="'+i+'" aria-label="Remove">&times;</button></div>').join('');
   const out=[];
@@ -1552,6 +1564,10 @@ function tWire(){
     grab();t.ldg=+b.dataset.v;setSeg('#tfLdg',t.ldg)});
   const cal=$('#tfCal');
   if(cal)cal.onchange=()=>{if(dok(cal.value)){grab();t.date=cal.value;tShow()}};
+  b.querySelectorAll('.nm2').forEach(el=>el.onclick=()=>{
+    grab();                       // keep the date/route/note being typed
+    cwFrom=t;cwShow(el.dataset.pid);
+  });
   b.querySelectorAll('.rolechip').forEach(el=>el.onclick=()=>{
     grab();const i=+el.dataset.ri,c=t.crew[i];
     c.role=ROLES[(ROLES.indexOf(c.role)+1)%ROLES.length];tShow()});
