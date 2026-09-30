@@ -1878,10 +1878,10 @@ function davExplain(err,cfg){
     return 'This page is served over HTTPS, so the browser blocks a plain http:// server. '
       +'Nextcloud has to be reachable over https.';
   if(/Failed to fetch|NetworkError|Load failed/i.test(m))
-    return 'Could not reach it at all. Either the address is unreachable from this device, '
-      +'or the server is refusing requests from this site (CORS — on Nextcloud, install the '
-      +'WebAppPassword app). If something like Cloudflare Access sits in front, it will block '
-      +'this too.'+where;
+    return 'Could not reach it at all. Either the address is unreachable from this device, or the '
+      +'server will not accept requests from this page (CORS). The server has to allow the origin '
+      +'\u201c'+location.origin+'\u201d — on Nextcloud that is the WebAppPassword app. A login '
+      +'gateway in front (Cloudflare Access) blocks it the same way.'+where;
   if(/ 401/.test(m))return 'Rejected (401): wrong username, or that is an account password '
       +'rather than an app password.'+where;
   if(/ 403/.test(m))return 'Refused (403): the credentials are understood but not allowed here.'+where;
