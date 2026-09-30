@@ -1,19 +1,15 @@
-# ── PRIVACY: nothing personal may enter this repo ──────────────────────
-# This repo is PUBLIC: the app, and nothing else. Personal records —
-# logbooks, notes about people — stay off it entirely. The app loads any
-# such data at runtime, on the device. See also .git/hooks/pre-commit.
-logbook/
-crew_notes/
+# This repo is public and holds the app only. Data of any kind stays out: the app
+# loads whatever it needs at runtime, on the device. See also .git/hooks/pre-commit,
+# which is an allowlist and is not itself in the repo — setup-github.sh reinstalls it.
 *.ods
 *.xlsx
+*.xls
 *.csv
 *.zip
-flights.json
-assignments.json
-crew/
+*.json
 *.md
 !README.md
-# personal / local
 .DS_Store
 *.local
 .env
+.venv/
